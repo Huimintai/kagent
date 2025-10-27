@@ -1,0 +1,55 @@
+---
+# Example: SAP AI Core ModelConfig for KAgent
+# This demonstrates how to configure SAP AI Core as a model provider
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kagent-sap-aicore
+  namespace: kagent
+type: Opaque
+stringData:
+  SAP_AI_CORE_API_KEY: "your-sap-ai-core-api-key-here"
+  CLIENT_SECRET: "your-oauth-client-secret-here"  # Optional: for OAuth
+
+---
+apiVersion: kagent.dev/v1alpha2
+kind: ModelConfig
+metadata:
+  name: sap-aicore-claude-4.5-sonnet
+  namespace: kagent
+spec:
+  provider: SAPAICore
+  model: "anthropic--claude-4.5-sonnet" 
+  apiKeySecret: "" # Model name depends on your deployment
+  apiKeySecretKey: ""
+  sapAICore:
+    baseUrl: "https://api.ai.intprod-eu12.eu-central-1.aws.ml.hana.ondemand.com"
+    resourceGroup: "default"
+    deploymentId: "d688d37c660ebe58"  # Replace with your actual deployment ID
+    # Optional OAuth configuration
+    authUrl: "https://team-ming-app-j8337dt7.authentication.eu12.hana.ondemand.com"
+    clientId: "sb-b4a5a75f-abeb-455b-97f4-15498307ec51!b692709|xsuaa_std!b318061"
+    clientSecret: "250d068f-5963-4bde-8603-70a8660f4270$xgeMiYJ_Xh-K6Km4Xzo6_SS8k-_KWzzk-x7O3kQU_Q8="  # Optional: for OAuth
+    # Optional model parameters (as strings for CRD compatibility)
+    temperature: "0.7"
+    maxTokens: 2048
+    topP: "0.9"
+    frequencyPenalty: "0.0"
+    presencePenalty: "0.0"
+
+---
+# Example: Agent using SAP AI Core
+apiVersion: kagent.dev/v1alpha2
+kind: Agent
+metadata:
+  name: sap-aicore-agent
+  namespace: kagent
+spec:
+  type: Declarative
+  description: "An agent powered by SAP AI Core"
+  declarative:
+    modelConfig: sap-aicore-gpt4
+    systemMessage: "You are a helpful AI assistant powered by SAP AI Core."
+    tools: []
+
