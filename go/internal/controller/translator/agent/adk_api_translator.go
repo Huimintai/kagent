@@ -787,46 +787,48 @@ func (a *adkApiTranslator) translateModel(ctx context.Context, namespace, modelC
 		return gemini, modelDeploymentData, nil
 	case v1alpha2.ModelProviderSAPAICore:
 		if model.Spec.SAPAICore == nil {
-				return nil, nil, fmt.Errorf("SAP AI Core model config is required")
+			return nil, nil, fmt.Errorf("SAP AI Core model config is required")
 		}
 		// Add API key from secret
 		if model.Spec.APIKeySecret != "" {
-				modelDeploymentData.EnvVars = append(modelDeploymentData.EnvVars, corev1.EnvVar{
-						Name: "SAP_AI_CORE_API_KEY",
-						ValueFrom: &corev1.EnvVarSource{
-								SecretKeyRef: &corev1.SecretKeySelector{
-										LocalObjectReference: corev1.LocalObjectReference{
-												Name: model.Spec.APIKeySecret,
-										},
-										Key: model.Spec.APIKeySecretKey,
-								},
+			modelDeploymentData.EnvVars = append(modelDeploymentData.EnvVars, corev1.EnvVar{
+				Name: "SAP_AI_CORE_API_KEY",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: model.Spec.APIKeySecret,
 						},
-				})
+						Key: model.Spec.APIKeySecretKey,
+					},
+				},
+			})
 		}
-		// Add client secret from secret if ClientID is provided
+		// Add client secret from secret if ClientID is provided and APIKeySecret is set
+		// This supports the case where client secret is stored in a secret
 		if model.Spec.SAPAICore.ClientID != "" && model.Spec.APIKeySecret != "" {
-				modelDeploymentData.EnvVars = append(modelDeploymentData.EnvVars, corev1.EnvVar{
-						Name: "SAP_AI_CORE_CLIENT_SECRET",
-						ValueFrom: &corev1.EnvVarSource{
-								SecretKeyRef: &corev1.SecretKeySelector{
-										LocalObjectReference: corev1.LocalObjectReference{
-												Name: model.Spec.APIKeySecret,
-										},
-										Key: "CLIENT_SECRET",
-								},
+			modelDeploymentData.EnvVars = append(modelDeploymentData.EnvVars, corev1.EnvVar{
+				Name: "SAP_AI_CORE_CLIENT_SECRET",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: model.Spec.APIKeySecret,
 						},
-				})
+						Key: "CLIENT_SECRET",
+					},
+				},
+			})
 		}
 		sapAICore := &adk.SAPAICore{
 			BaseModel: adk.BaseModel{
-					Model:   model.Spec.Model,
-					Headers: model.Spec.DefaultHeaders,
+				Model:   model.Spec.Model,
+				Headers: model.Spec.DefaultHeaders,
 			},
 			BaseUrl:          model.Spec.SAPAICore.BaseURL,
 			ResourceGroup:    model.Spec.SAPAICore.ResourceGroup,
 			DeploymentID:     model.Spec.SAPAICore.DeploymentID,
 			AuthUrl:          model.Spec.SAPAICore.AuthURL,
 			ClientID:         model.Spec.SAPAICore.ClientID,
+			ClientSecret:     model.Spec.SAPAICore.ClientSecret,
 			Temperature:      model.Spec.SAPAICore.Temperature,
 			MaxTokens:        model.Spec.SAPAICore.MaxTokens,
 			TopP:             model.Spec.SAPAICore.TopP,
@@ -834,7 +836,7 @@ func (a *adkApiTranslator) translateModel(ctx context.Context, namespace, modelC
 			FrequencyPenalty: model.Spec.SAPAICore.FrequencyPenalty,
 			PresencePenalty:  model.Spec.SAPAICore.PresencePenalty,
 		}
-		return sapAICore, modelDeploymentData, nil		
+		return sapAICore, modelDeploymentData, nil
 	}
 	return nil, nil, fmt.Errorf("unknown model provider: %s", model.Spec.Provider)
 }

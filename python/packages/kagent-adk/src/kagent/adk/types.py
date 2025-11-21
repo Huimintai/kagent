@@ -90,6 +90,7 @@ class SAPAICore(BaseLLM):
     deployment_id: str
     auth_url: str | None = None
     client_id: str | None = None
+    client_secret: str | None = None
     temperature: str | None = None
     max_tokens: int | None = None
     top_p: str | None = None
@@ -180,6 +181,7 @@ class AgentConfig(BaseModel):
                 deployment_id=self.model.deployment_id,
                 auth_url=self.model.auth_url,
                 client_id=self.model.client_id,
+                client_secret=self.model.client_secret,
                 default_headers=extra_headers,
                 temperature=self.model.temperature,
                 max_tokens=self.model.max_tokens,

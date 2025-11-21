@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from functools import cached_property
 from typing import TYPE_CHECKING, AsyncGenerator, Literal, Optional
@@ -15,6 +16,8 @@ from pydantic import Field
 
 if TYPE_CHECKING:
     from google.adk.models.llm_request import LlmRequest
+
+logger = logging.getLogger(__name__)
 
 
 class SAPAICore(BaseLlm):
@@ -66,13 +69,17 @@ class SAPAICore(BaseLlm):
         # SAP AI Core supports various models through deployments
         return [r".*"]
 
+    def _get_api_key(self) -> Optional[str]:
+        """Get API key from parameter or environment variable."""
+        return self.api_key or os.environ.get("SAP_AI_CORE_API_KEY")
+
     @cached_property
     def _client(self) -> httpx.AsyncClient:
         """Get the HTTP client with authentication."""
         headers = self.default_headers.copy() if self.default_headers else {}
         
         # Get API key from parameter or environment
-        api_key = self.api_key or os.environ.get("SAP_AI_CORE_API_KEY")
+        api_key = self._get_api_key()
         
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
@@ -89,11 +96,14 @@ class SAPAICore(BaseLlm):
 
     async def _get_oauth_token(self) -> Optional[str]:
         """Get OAuth2 access token if OAuth is configured."""
-        if not all([self.auth_url, self.client_id]):
+        # Check if OAuth is configured (auth_url and client_id must be non-empty)
+        if not self.auth_url or not self.client_id:
             return None
         
+        # Get client secret from parameter, config, or environment variable
         client_secret = self.client_secret or os.environ.get("SAP_AI_CORE_CLIENT_SECRET")
         if not client_secret:
+            logger.warning("OAuth is configured but client_secret is not available")
             return None
         
         try:
@@ -192,10 +202,25 @@ class SAPAICore(BaseLlm):
         # Get OAuth token if configured
         oauth_token = await self._get_oauth_token()
         
+        # Check if we have at least one authentication method
+        # We check both at runtime to handle cases where env vars are set after client initialization
+        api_key = self._get_api_key()
+        if not oauth_token and not api_key:
+            error_msg = "Neither OAuth token nor API key is available"
+            logger.error(error_msg)
+            yield LlmResponse(error_code="AUTH_ERROR", error_message=error_msg)
+            return
+        
         # Build request headers
+        # Priority: OAuth token > API key
         headers = {}
         if oauth_token:
             headers["Authorization"] = f"Bearer {oauth_token}"
+        elif api_key:
+            # If OAuth token is not available, use API key
+            # We set it here to ensure it's available even if _client was initialized without it
+            headers["Authorization"] = f"Bearer {api_key}"
+        # If neither is available, we've already returned an error above
         
         # Convert messages
         system_instruction = None

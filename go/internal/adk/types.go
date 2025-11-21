@@ -188,6 +188,7 @@ type SAPAICore struct {
 	DeploymentID     string  `json:"deployment_id"`
 	AuthUrl          string  `json:"auth_url,omitempty"`
 	ClientID         string  `json:"client_id,omitempty"`
+	ClientSecret     string  `json:"client_secret,omitempty"`
 	Temperature      *string `json:"temperature,omitempty"`
 	MaxTokens        *int    `json:"max_tokens,omitempty"`
 	TopP             *string `json:"top_p,omitempty"`
@@ -205,6 +206,7 @@ func (s *SAPAICore) MarshalJSON() ([]byte, error) {
 		"deployment_id":     s.DeploymentID,
 		"auth_url":          s.AuthUrl,
 		"client_id":         s.ClientID,
+		"client_secret":     s.ClientSecret,
 		"temperature":       s.Temperature,
 		"max_tokens":        s.MaxTokens,
 		"top_p":             s.TopP,
