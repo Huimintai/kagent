@@ -94,6 +94,17 @@ class SAPAICore(BaseLlm):
             timeout=self.timeout,
         )
 
+    def _normalize_oauth_url(self, url: str) -> str:
+        """Normalize OAuth token endpoint URL.
+        
+        If the URL doesn't end with /oauth/token, append it.
+        This handles cases where users provide the base authentication URL.
+        """
+        url = url.rstrip("/")
+        if not url.endswith("/oauth/token"):
+            url = f"{url}/oauth/token"
+        return url
+
     async def _get_oauth_token(self) -> Optional[str]:
         """Get OAuth2 access token if OAuth is configured."""
         # Check if OAuth is configured (auth_url and client_id must be non-empty)
@@ -106,10 +117,13 @@ class SAPAICore(BaseLlm):
             logger.warning("OAuth is configured but client_secret is not available")
             return None
         
+        # Normalize OAuth token endpoint URL
+        token_url = self._normalize_oauth_url(self.auth_url)
+        
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(follow_redirects=False) as client:
                 response = await client.post(
-                    self.auth_url,
+                    token_url,
                     data={
                         "grant_type": "client_credentials",
                         "client_id": self.client_id,
@@ -117,56 +131,126 @@ class SAPAICore(BaseLlm):
                     },
                     headers={"Content-Type": "application/x-www-form-urlencoded"},
                 )
+                
+                # Handle redirects (should not happen for OAuth token endpoint)
+                if response.is_redirect:
+                    redirect_location = response.headers.get("location", "")
+                    error_msg = (
+                        f"OAuth token endpoint returned redirect (302). "
+                        f"This usually means the authUrl is incorrect. "
+                        f"URL: {token_url}, Redirect: {redirect_location}"
+                    )
+                    logger.error(error_msg)
+                    return None
+                
                 response.raise_for_status()
                 token_data = response.json()
-                return token_data.get("access_token")
+                access_token = token_data.get("access_token")
+                if not access_token:
+                    logger.error(f"No access_token in OAuth response: {token_data}")
+                    return None
+                return access_token
+        except httpx.HTTPStatusError as e:
+            error_msg = (
+                f"OAuth token request failed with status {e.response.status_code}. "
+                f"URL: {token_url}, Response: {e.response.text[:200]}"
+            )
+            logger.error(error_msg)
+            return None
         except Exception as e:
-            print(f"Failed to get OAuth token: {e}")
+            logger.error(f"Failed to get OAuth token: {e}", exc_info=True)
             return None
 
     def _convert_content_to_messages(
         self, contents: list[types.Content], system_instruction: Optional[str] = None
     ) -> list[dict]:
-        """Convert google.genai Content list to SAP AI Core messages format."""
-        messages = []
-        
-        # Add system message if provided
+        """Convert google.genai Content list to SAP AI Core Converse API messages format.
+
+        Expected format (per working curl example):
+        {
+          "messages": [
+            {"role": "user", "content": [{"text": "..."}]}
+          ]
+        }
+        Each message's content must be a list of objects containing a text field.
+        """
+        messages: list[dict] = []
+        # SAP AI Core Converse currently accepts only roles: user, assistant.
+        # We fold any system instruction into a leading synthetic user message
+        # so that deployment validation passes.
         if system_instruction:
-            messages.append({"role": "system", "content": system_instruction})
-        
+            messages.append({
+                "role": "user",
+                "content": [{"text": system_instruction}]
+            })
+
         for content in contents:
             role = "assistant" if content.role == "model" else content.role
-            
-            # Extract text from parts
-            text_parts = []
+            text_parts: list[str] = []
             for part in content.parts or []:
-                if part.text:
+                if getattr(part, "text", None):
                     text_parts.append(part.text)
-            
             if text_parts:
+                # Merge parts with newlines into a single text block for now
                 messages.append({
                     "role": role,
-                    "content": "\n".join(text_parts)
+                    "content": [{"text": "\n".join(text_parts)}]
                 })
-        
         return messages
 
     def _convert_response_to_llm_response(self, response_data: dict) -> LlmResponse:
-        """Convert SAP AI Core response to LlmResponse."""
-        # SAP AI Core typically returns OpenAI-compatible format
+        """Convert SAP AI Core response (Converse API or OpenAI-style) to LlmResponse."""
+        # First try Converse style (as per sample response)
+        try:
+            if "output" in response_data and isinstance(response_data.get("output"), dict):
+                output = response_data["output"]
+                if "message" in output and isinstance(output["message"], dict):
+                    message = output["message"]
+                    role = message.get("role", "assistant")
+                    content_items = message.get("content", [])
+                    # Concatenate all text fields
+                    text_parts: list[str] = []
+                    for item in content_items:
+                        if isinstance(item, dict) and "text" in item and isinstance(item["text"], str):
+                            text_parts.append(item["text"])
+                    combined_text = "\n".join(text_parts)
+                    parts = [types.Part.from_text(text=combined_text)]
+                    content = types.Content(role="model", parts=parts)
+
+                    # Usage mapping (token naming differs)
+                    usage_metadata = None
+                    if "usage" in response_data and isinstance(response_data["usage"], dict):
+                        usage = response_data["usage"]
+                        usage_metadata = types.GenerateContentResponseUsageMetadata(
+                            prompt_token_count=usage.get("inputTokens", usage.get("prompt_tokens", 0)),
+                            candidates_token_count=usage.get("outputTokens", usage.get("completion_tokens", 0)),
+                            total_token_count=usage.get("totalTokens", usage.get("total_tokens", 0)),
+                        )
+
+                    # Finish reason mapping
+                    finish_reason = types.FinishReason.STOP
+                    stop_reason = response_data.get("stopReason") or response_data.get("stop_reason")
+                    if stop_reason == "max_tokens":
+                        finish_reason = types.FinishReason.MAX_TOKENS
+
+                    return LlmResponse(
+                        content=content,
+                        usage_metadata=usage_metadata,
+                        finish_reason=finish_reason
+                    )
+        except Exception:
+            # Fall through to OpenAI-style parsing
+            pass
+
+        # Fallback: OpenAI-style response
         choices = response_data.get("choices", [])
         if not choices:
-            return LlmResponse(error_code="API_ERROR", error_message="No choices in response")
-        
+            return LlmResponse(error_code="API_ERROR", error_message="No valid response content")
         choice = choices[0]
         message = choice.get("message", {})
         content_text = message.get("content", "")
-        
-        # Create content
         parts = [types.Part.from_text(text=content_text)]
         content = types.Content(role="model", parts=parts)
-        
-        # Handle usage metadata
         usage_metadata = None
         if "usage" in response_data:
             usage = response_data["usage"]
@@ -175,17 +259,10 @@ class SAPAICore(BaseLlm):
                 candidates_token_count=usage.get("completion_tokens", 0),
                 total_token_count=usage.get("total_tokens", 0),
             )
-        
-        # Handle finish reason
         finish_reason = types.FinishReason.STOP
         if choice.get("finish_reason") == "length":
             finish_reason = types.FinishReason.MAX_TOKENS
-        
-        return LlmResponse(
-            content=content,
-            usage_metadata=usage_metadata,
-            finish_reason=finish_reason
-        )
+        return LlmResponse(content=content, usage_metadata=usage_metadata, finish_reason=finish_reason)
 
     async def generate_content_async(
         self, llm_request: LlmRequest, stream: bool = False
@@ -213,7 +290,10 @@ class SAPAICore(BaseLlm):
         
         # Build request headers
         # Priority: OAuth token > API key
-        headers = {}
+        # Note: We need to ensure AI-Resource-Group header is included
+        headers = {
+            "AI-Resource-Group": self.resource_group,
+        }
         if oauth_token:
             headers["Authorization"] = f"Bearer {oauth_token}"
         elif api_key:
@@ -237,38 +317,59 @@ class SAPAICore(BaseLlm):
         
         messages = self._convert_content_to_messages(llm_request.contents, system_instruction)
         
-        # Build request payload
-        payload = {
-            "messages": messages,
-            "model": llm_request.model or self.model,
-        }
-        
-        # Add optional parameters with string to float conversion
+        # Build request payload for Converse API
+        inference_config: dict = {}
         if self.temperature is not None:
             try:
-                payload["temperature"] = float(self.temperature)
+                temp_value = float(self.temperature)
+                if 0.0 <= temp_value <= 2.0:
+                    inference_config["temperature"] = temp_value
+                else:
+                    logger.warning(f"Temperature value {temp_value} out of range [0.0, 2.0], skipping")
             except (ValueError, TypeError):
                 logger.warning(f"Invalid temperature value: {self.temperature}")
         if self.max_tokens is not None:
-            payload["max_tokens"] = self.max_tokens
+            inference_config["maxTokens"] = self.max_tokens
         if self.top_p is not None:
             try:
-                payload["top_p"] = float(self.top_p)
+                top_p_value = float(self.top_p)
+                if 0.0 <= top_p_value <= 1.0:
+                    inference_config["topP"] = top_p_value
+                else:
+                    logger.warning(f"Top-p value {top_p_value} out of range [0.0, 1.0], skipping")
             except (ValueError, TypeError):
                 logger.warning(f"Invalid top_p value: {self.top_p}")
+        if self.top_k is not None:
+            inference_config["topK"] = self.top_k
         if self.frequency_penalty is not None:
             try:
-                payload["frequency_penalty"] = float(self.frequency_penalty)
+                freq_penalty_value = float(self.frequency_penalty)
+                inference_config["frequencyPenalty"] = freq_penalty_value
             except (ValueError, TypeError):
                 logger.warning(f"Invalid frequency_penalty value: {self.frequency_penalty}")
         if self.presence_penalty is not None:
             try:
-                payload["presence_penalty"] = float(self.presence_penalty)
+                pres_penalty_value = float(self.presence_penalty)
+                inference_config["presencePenalty"] = pres_penalty_value
             except (ValueError, TypeError):
                 logger.warning(f"Invalid presence_penalty value: {self.presence_penalty}")
+
+        payload = {"messages": messages}
+        # If both temperature and topP present and API forbids them together, prefer temperature.
+        if "temperature" in inference_config and "topP" in inference_config:
+            logger.warning("Both temperature and topP specified; removing topP to satisfy model constraints.")
+            inference_config.pop("topP", None)
+        if inference_config:
+            payload["inferenceConfig"] = inference_config
+        # Do NOT include model field; deployment id already determines model. Including it may trigger 400 errors.
         
         # SAP AI Core inference endpoint
-        endpoint = f"/v2/inference/deployments/{self.deployment_id}/chat/completions"
+        endpoint = f"/v2/inference/deployments/{self.deployment_id}/converse"
+        
+        # Log request details for debugging (at debug level)
+        logger.debug(f"SAP AI Core API request - URL: {self.base_url}{endpoint}")
+        logger.debug(f"SAP AI Core API request - Headers: {headers}")
+        logger.debug(f"SAP AI Core API request - Payload: {json.dumps(payload, indent=2)}")
         
         try:
             if stream:
@@ -305,8 +406,36 @@ class SAPAICore(BaseLlm):
                 yield self._convert_response_to_llm_response(response_data)
         
         except httpx.HTTPStatusError as e:
-            error_msg = f"HTTP {e.response.status_code}: {e.response.text}"
-            yield LlmResponse(error_code="HTTP_ERROR", error_message=error_msg)
+            # Log detailed error information for debugging
+            try:
+                error_body = e.response.text
+                # Try to parse JSON error response
+                try:
+                    error_json = e.response.json()
+                    error_details = json.dumps(error_json, indent=2)
+                except (json.JSONDecodeError, ValueError):
+                    error_details = error_body[:1000]
+                
+                # Log at INFO level so it's visible in production logs
+                logger.error(
+                    f"SAP AI Core API request failed with {e.response.status_code}:\n"
+                    f"URL: {self.base_url}{endpoint}\n"
+                    f"Error Response: {error_details}\n"
+                    f"Request Payload: {json.dumps(payload, indent=2)}\n"
+                    f"Request Headers: {json.dumps({k: v if k != 'Authorization' else 'Bearer ***' for k, v in headers.items()}, indent=2)}"
+                )
+            except Exception as log_err:
+                logger.error(f"Failed to log error details: {log_err}")
+            
+            # Extract error message from response
+            try:
+                error_json = e.response.json()
+                error_msg = error_json.get("error", {}).get("message", str(error_json))
+            except (json.JSONDecodeError, ValueError, AttributeError):
+                error_msg = e.response.text[:500] if e.response.text else "Unknown error"
+            
+            full_error_msg = f"HTTP {e.response.status_code}: {error_msg}"
+            yield LlmResponse(error_code="HTTP_ERROR", error_message=full_error_msg)
         except Exception as e:
             yield LlmResponse(error_code="API_ERROR", error_message=str(e))
 
