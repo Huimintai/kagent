@@ -183,23 +183,63 @@ class SAPAICore(BaseLlm):
                 "role": "user",
                 "content": [{"text": system_instruction}]
             })
-
+        
         for content in contents:
             role = "assistant" if content.role == "model" else content.role
-            text_parts: list[str] = []
+            content_items: list[dict] = []
+            
             for part in content.parts or []:
+                # Handle text parts
                 if getattr(part, "text", None):
-                    text_parts.append(part.text)
-            if text_parts:
-                # Merge parts with newlines into a single text block for now
+                    content_items.append({"text": part.text})
+                # Handle function calls (tool use)
+                elif getattr(part, "function_call", None):
+                    func_call = part.function_call
+                    content_items.append({
+                        "toolUse": {
+                            "toolUseId": func_call.id or "",
+                            "name": func_call.name,
+                            "input": func_call.args
+                        }
+                    })
+                # Handle function responses (tool results)
+                elif getattr(part, "function_response", None):
+                    func_resp = part.function_response
+                    # Extract response content - use model_dump() to properly serialize
+                    try:
+                        # Try to get the response as a dictionary
+                        if hasattr(func_resp.response, 'model_dump'):
+                            response_dict = func_resp.response.model_dump(by_alias=True, exclude_none=True)
+                            result_text = json.dumps(response_dict)
+                        elif isinstance(func_resp.response, dict):
+                            result_text = json.dumps(func_resp.response)
+                        else:
+                            result_text = str(func_resp.response)
+                    except Exception as e:
+                        logger.warning(f"Failed to serialize function response: {e}")
+                        result_text = str(func_resp.response)
+                    
+                    content_items.append({
+                        "toolResult": {
+                            "toolUseId": func_resp.id or "",
+                            "content": [{"text": result_text}],
+                            "status": "success"  # Assume success; could check for error markers
+                        }
+                    })
+            
+            if content_items:
                 messages.append({
                     "role": role,
-                    "content": [{"text": "\n".join(text_parts)}]
+                    "content": content_items
                 })
         return messages
 
     def _convert_response_to_llm_response(self, response_data: dict) -> LlmResponse:
         """Convert SAP AI Core response (Converse API or OpenAI-style) to LlmResponse."""
+        # Log raw response for debugging
+        logger.info(f"Raw API response keys: {list(response_data.keys())}")
+        logger.debug(f"Raw API response: {json.dumps(response_data, indent=2)[:2000]}")
+        
         # First try Converse style (as per sample response)
         try:
             if "output" in response_data and isinstance(response_data.get("output"), dict):
@@ -208,13 +248,28 @@ class SAPAICore(BaseLlm):
                     message = output["message"]
                     role = message.get("role", "assistant")
                     content_items = message.get("content", [])
-                    # Concatenate all text fields
-                    text_parts: list[str] = []
+                    
+                    # Process content items (text and tool calls)
+                    parts: list[types.Part] = []
                     for item in content_items:
-                        if isinstance(item, dict) and "text" in item and isinstance(item["text"], str):
-                            text_parts.append(item["text"])
-                    combined_text = "\n".join(text_parts)
-                    parts = [types.Part.from_text(text=combined_text)]
+                        if isinstance(item, dict):
+                            # Handle text content
+                            if "text" in item and isinstance(item["text"], str):
+                                parts.append(types.Part.from_text(text=item["text"]))
+                            # Handle tool use (function calls)
+                            elif "toolUse" in item and isinstance(item["toolUse"], dict):
+                                tool_use = item["toolUse"]
+                                function_call = types.FunctionCall(
+                                    name=tool_use.get("name", ""),
+                                    args=tool_use.get("input", {}),
+                                    id=tool_use.get("toolUseId", "")
+                                )
+                                parts.append(types.Part(function_call=function_call))
+                    
+                    # If no parts extracted, add empty text
+                    if not parts:
+                        parts = [types.Part.from_text(text="")]
+                    
                     content = types.Content(role="model", parts=parts)
 
                     # Usage mapping (token naming differs)
@@ -232,19 +287,26 @@ class SAPAICore(BaseLlm):
                     stop_reason = response_data.get("stopReason") or response_data.get("stop_reason")
                     if stop_reason == "max_tokens":
                         finish_reason = types.FinishReason.MAX_TOKENS
+                    # Note: tool_use is still STOP - the framework detects tool calls via Part.function_call
 
+                    logger.info(f"Successfully parsed Converse response, finish_reason: {finish_reason}, parts: {len(parts)}")
                     return LlmResponse(
                         content=content,
                         usage_metadata=usage_metadata,
                         finish_reason=finish_reason
                     )
-        except Exception:
+        except Exception as e:
             # Fall through to OpenAI-style parsing
-            pass
+            logger.warning(f"Failed to parse Converse API response: {e}", exc_info=True)
 
         # Fallback: OpenAI-style response
         choices = response_data.get("choices", [])
         if not choices:
+            logger.error(
+                f"Unable to parse response in either Converse or OpenAI format. "
+                f"Response keys: {list(response_data.keys())}, "
+                f"Full response: {json.dumps(response_data, indent=2)[:1000]}"
+            )
             return LlmResponse(error_code="API_ERROR", error_message="No valid response content")
         choice = choices[0]
         message = choice.get("message", {})
@@ -263,6 +325,152 @@ class SAPAICore(BaseLlm):
         if choice.get("finish_reason") == "length":
             finish_reason = types.FinishReason.MAX_TOKENS
         return LlmResponse(content=content, usage_metadata=usage_metadata, finish_reason=finish_reason)
+
+    def _normalize_json_schema(self, schema: dict) -> dict:
+        """Normalize JSON schema to comply with JSON Schema Draft 2020-12.
+        
+        Fixes common issues:
+        - Converts snake_case keys (any_of, one_of) to camelCase (anyOf, oneOf)
+        - Converts uppercase type values (STRING, INTEGER) to lowercase
+        - Removes nested type wrappers
+        - Converts nullable patterns to proper type arrays
+        """
+        if not isinstance(schema, dict):
+            return schema
+        
+        normalized = {}
+        
+        for key, value in schema.items():
+            # Normalize key names
+            if key == "any_of":
+                key = "anyOf"
+            elif key == "one_of":
+                key = "oneOf"
+            elif key == "all_of":
+                key = "allOf"
+            
+            # Handle type field
+            if key == "type":
+                if isinstance(value, str):
+                    # Convert to lowercase
+                    value = value.lower()
+                    # Map genai types to JSON Schema types
+                    type_map = {
+                        "string": "string",
+                        "integer": "integer",
+                        "number": "number",
+                        "boolean": "boolean",
+                        "object": "object",
+                        "array": "array",
+                        "null": "null"
+                    }
+                    value = type_map.get(value, "string")
+            
+            # Recursively normalize nested structures
+            if isinstance(value, dict):
+                value = self._normalize_json_schema(value)
+            elif isinstance(value, list):
+                value = [self._normalize_json_schema(item) if isinstance(item, dict) else item for item in value]
+            
+            normalized[key] = value
+        
+        # Handle nullable + anyOf patterns - simplify to type array
+        if "anyOf" in normalized:
+            any_of = normalized["anyOf"]
+            # Check if it's a nullable pattern like [{type: "string"}, {type: "null"}] or [{type: "string"}, {nullable: true}]
+            if isinstance(any_of, list):
+                types_in_any_of = []
+                has_nullable = False
+                primary_type = None
+                
+                for item in any_of:
+                    if isinstance(item, dict):
+                        if "type" in item:
+                            item_type = item["type"]
+                            if item_type == "null":
+                                has_nullable = True
+                            elif item_type in ["string", "integer", "number", "boolean", "array"]:
+                                primary_type = item_type
+                            # Skip "object" type for null union - it's likely a pydantic artifact
+                        elif item.get("nullable"):
+                            has_nullable = True
+                
+                # If we have a primary type + nullable indicator, convert to type array
+                if primary_type and has_nullable:
+                    del normalized["anyOf"]
+                    normalized["type"] = [primary_type, "null"]
+                # If all are simple types without extra properties, keep as array
+                elif len(any_of) == 2 and all(isinstance(item, dict) and "type" in item and item["type"] in ["string", "integer", "number", "boolean", "null"] and len(item) == 1 for item in any_of):
+                    del normalized["anyOf"]
+                    normalized["type"] = [item["type"] for item in any_of]
+        
+        # Remove invalid/redundant fields
+        if "nullable" in normalized:
+            del normalized["nullable"]
+        
+        # Remove duplicate type specifications
+        if "type" in normalized and isinstance(normalized["type"], str) and "anyOf" in normalized:
+            # Keep anyOf, remove simple type
+            del normalized["type"]
+        
+        return normalized
+    
+    def _convert_tools_to_converse(self, tools: list[types.Tool]) -> list[dict]:
+        """Convert genai Tools to AWS Bedrock Converse API format.
+        
+        Converse API tool format:
+        {
+            "toolSpec": {
+                "name": "tool_name",
+                "description": "tool description",
+                "inputSchema": {
+                    "json": {
+                        "type": "object",
+                        "properties": {...},
+                        "required": [...]
+                    }
+                }
+            }
+        }
+        """
+        converse_tools = []
+        
+        for tool in tools:
+            if tool.function_declarations:
+                for func_decl in tool.function_declarations:
+                    # Build input schema
+                    properties = {}
+                    required = []
+                    
+                    if func_decl.parameters:
+                        if func_decl.parameters.properties:
+                            for prop_name, prop_schema in func_decl.parameters.properties.items():
+                                # Convert schema to dict, handling genai types
+                                prop_dict = prop_schema.model_dump(exclude_none=True)
+                                # Normalize to JSON Schema Draft 2020-12
+                                normalized_prop = self._normalize_json_schema(prop_dict)
+                                properties[prop_name] = normalized_prop
+                        
+                        if func_decl.parameters.required:
+                            required = func_decl.parameters.required
+                    
+                    # Build tool spec
+                    tool_spec = {
+                        "toolSpec": {
+                            "name": func_decl.name or "",
+                            "description": func_decl.description or "",
+                            "inputSchema": {
+                                "json": {
+                                    "type": "object",
+                                    "properties": properties,
+                                    "required": required
+                                }
+                            }
+                        }
+                    }
+                    converse_tools.append(tool_spec)
+        
+        return converse_tools
 
     async def generate_content_async(
         self, llm_request: LlmRequest, stream: bool = False
@@ -363,6 +571,22 @@ class SAPAICore(BaseLlm):
             payload["inferenceConfig"] = inference_config
         # Do NOT include model field; deployment id already determines model. Including it may trigger 400 errors.
         
+        # Handle tools - Convert genai tools to Converse API format
+        if llm_request.config and llm_request.config.tools:
+            genai_tools = []
+            for tool in llm_request.config.tools:
+                if hasattr(tool, "function_declarations"):
+                    genai_tools.append(tool)
+            
+            if genai_tools:
+                converse_tools = self._convert_tools_to_converse(genai_tools)
+                if converse_tools:
+                    payload["toolConfig"] = {"tools": converse_tools}
+                    logger.info(f"Added {len(converse_tools)} tools to request")
+                    # Log first tool for debugging (at debug level)
+                    if converse_tools:
+                        logger.info(f"Sample tool schema: {json.dumps(converse_tools[0], indent=2)}")
+        
         # SAP AI Core inference endpoint
         endpoint = f"/v2/inference/deployments/{self.deployment_id}/converse"
         
@@ -400,10 +624,15 @@ class SAPAICore(BaseLlm):
                                 continue
             else:
                 # Non-streaming request
+                logger.info(f"Sending POST request to {endpoint}")
                 response = await self._client.post(endpoint, json=payload, headers=headers)
+                logger.info(f"Received response with status {response.status_code}")
                 response.raise_for_status()
                 response_data = response.json()
-                yield self._convert_response_to_llm_response(response_data)
+                logger.info(f"Parsed response data, keys: {list(response_data.keys())}")
+                llm_response = self._convert_response_to_llm_response(response_data)
+                logger.info(f"Converted to LlmResponse, error_code: {llm_response.error_code}, finish_reason: {llm_response.finish_reason}")
+                yield llm_response
         
         except httpx.HTTPStatusError as e:
             # Log detailed error information for debugging
@@ -437,5 +666,6 @@ class SAPAICore(BaseLlm):
             full_error_msg = f"HTTP {e.response.status_code}: {error_msg}"
             yield LlmResponse(error_code="HTTP_ERROR", error_message=full_error_msg)
         except Exception as e:
+            logger.error(f"Unexpected error in generate_content_async: {e}", exc_info=True)
             yield LlmResponse(error_code="API_ERROR", error_message=str(e))
 
