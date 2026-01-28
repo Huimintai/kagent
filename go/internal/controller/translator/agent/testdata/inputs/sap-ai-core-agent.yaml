@@ -1,0 +1,41 @@
+operation: translateAgent
+targetObject: sap-test-agent
+namespace: test
+objects:
+  - apiVersion: v1
+    kind: Secret
+    metadata:
+      name: sap-credentials
+      namespace: test
+    data:
+      client_id: c2FwLWNsaWVudC1pZA==          # base64 encoded "sap-client-id"
+      client_secret: c2FwLWNsaWVudC1zZWNyZXQ=   # base64 encoded "sap-client-secret"
+  - apiVersion: kagent.dev/v1alpha2
+    kind: ModelConfig
+    metadata:
+      name: sap-gpt4
+      namespace: test
+    spec:
+      provider: SAPAICore
+      model: gpt-4
+      apiKeySecret: sap-credentials
+      apiKeySecretKey: client_id
+      sapAICore:
+        baseUrl: https://api.ai.prod.eu-central-1.aws.ml.hana.ondemand.com
+        tokenUrl: https://auth.eu10.hana.ondemand.com/oauth/token
+        resourceGroup: default
+        deploymentId: d12345abc
+        modelVersion: latest
+        clientIdentifier: kagent
+  - apiVersion: kagent.dev/v1alpha2
+    kind: Agent
+    metadata:
+      name: sap-test-agent
+      namespace: test
+    spec:
+      type: Declarative
+      declarative:
+        description: An agent using SAP AI Core with GPT-4
+        systemMessage: You are a helpful AI assistant running on SAP AI Core.
+        modelConfig: sap-gpt4
+        tools: []
