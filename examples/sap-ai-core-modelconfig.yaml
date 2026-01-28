@@ -1,0 +1,179 @@
+# SAP AI Core ModelConfig Example
+#
+# This file demonstrates how to configure kagent to use SAP AI Core as an LLM provider.
+# SAP AI Core is an enterprise AI platform on SAP Business Technology Platform (BTP)
+# that provides unified access to multiple LLM providers through a standardized API.
+#
+# Prerequisites:
+# 1. SAP AI Core instance deployed on SAP BTP
+# 2. OAuth2 client credentials (client ID and client secret) from SAP BTP cockpit
+# 3. Resource group created in SAP AI Core (or use "default")
+# 4. Model deployment created in SAP AI Core (optional - can be auto-resolved)
+#
+# Authentication:
+# SAP AI Core uses OAuth2 Client Credentials flow. You need to:
+# 1. Create a service key in your SAP BTP subaccount
+# 2. Extract the client_id and client_secret from the service key
+# 3. Store them in a Kubernetes Secret (as shown below)
+#
+# Deployment ID:
+# - If you specify deploymentId, kagent will use that deployment directly
+# - If you omit deploymentId, kagent will query SAP AI Core at runtime to find
+#   a running deployment matching your model name and version filter
+#
+# TLS Configuration:
+# - By default, system CAs are used to verify SAP AI Core's SSL certificates
+# - For custom certificates (e.g., internal proxies), see the optional TLS
+#   configuration section below
+
+---
+# Secret containing SAP AI Core OAuth2 credentials
+# These credentials are used to authenticate with SAP AI Core's OAuth2 token endpoint
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: sap-ai-core-creds
+  namespace: kagent
+type: Opaque
+stringData:
+  # OAuth2 client ID from your SAP BTP service key
+  # Replace with your actual client ID (format: sb-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx!bXXXXX)
+  client_id: "sb-abc12345-6789-0abc-def1-234567890abc!b12345"
+
+  # OAuth2 client secret from your SAP BTP service key
+  # Replace with your actual client secret (long base64-like string)
+  client_secret: "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ=="
+
+---
+# ModelConfig for SAP AI Core provider
+# This configuration connects kagent agents to your SAP AI Core instance
+
+apiVersion: kagent.dev/v1alpha2
+kind: ModelConfig
+metadata:
+  name: sap-ai-core-gpt4
+  namespace: kagent
+spec:
+  # Provider must be set to SAPAICore
+  provider: SAPAICore
+
+  # Model name/ID to use for inference
+  # This should match a model available in your SAP AI Core deployment
+  # Examples: gpt-4o, gpt-4-turbo, claude-3-5-sonnet, gemini-1.5-pro
+  model: gpt-4o
+
+  # Reference to the Secret containing OAuth2 credentials
+  # The Secret must contain keys: client_id and client_secret
+  apiKeySecret: sap-ai-core-creds
+  # These keys are used by the controller to set environment variables:
+  # - client_id → SAP_AI_CORE_CLIENT_ID
+  # - client_secret → SAP_AI_CORE_CLIENT_SECRET
+
+  # SAP AI Core-specific configuration
+  sapAICore:
+    # Base URL for the SAP AI Core API endpoint (REQUIRED)
+    # Format: https://api.ai.prod.{region}.aws.ml.hana.ondemand.com
+    # Replace {region} with your SAP BTP region (e.g., eu-central-1, us-east-1)
+    baseUrl: "https://api.ai.prod.eu-central-1.aws.ml.hana.ondemand.com"
+
+    # Token URL for OAuth2 authentication (REQUIRED)
+    # Format: https://{subaccount}.authentication.{region}.hana.ondemand.com
+    # Replace {subaccount} with your SAP BTP subaccount subdomain
+    # Replace {region} with your authentication region (e.g., eu10, us10)
+    # Note: The /oauth/token path is automatically appended if missing
+    tokenUrl: "https://mysubaccount.authentication.eu10.hana.ondemand.com"
+
+    # Resource group in SAP AI Core (OPTIONAL)
+    # Default: "default"
+    # If you created custom resource groups in SAP AI Core, specify the name here
+    resourceGroup: "default"
+
+    # Deployment ID for direct deployment access (OPTIONAL)
+    # If specified, kagent will use this deployment ID directly without querying
+    # If omitted, kagent will query SAP AI Core at runtime to find a running
+    # deployment matching your model name and modelVersion filter
+    # Format: d1234567890abcdef (alphanumeric string from SAP AI Core)
+    # deploymentId: "d12345abc"
+
+    # Model version filter for deployment resolution (OPTIONAL)
+    # Default: "latest"
+    # Used when deploymentId is not specified. Filters deployments by version.
+    # Examples: "latest", "2024-05-13", "v1.0"
+    modelVersion: "latest"
+
+    # Client identifier for request tracking (OPTIONAL)
+    # Default: "kagent"
+    # Sent in the AI-Client-Type header for SAP AI Core request tracking
+    # You can customize this to identify different kagent environments
+    clientIdentifier: "kagent"
+
+  # Optional: TLS configuration for custom certificates
+  # Uncomment this section if you access SAP AI Core through an internal
+  # proxy or gateway with a self-signed certificate
+  #
+  # tls:
+  #   # Reference to Secret containing CA certificate in PEM format
+  #   caCertSecretRef: sap-proxy-ca-cert
+  #   caCertSecretKey: ca.crt
+  #
+  #   # Trust both system CAs and custom CA (recommended)
+  #   # When false (default), both system CAs and custom CA are trusted
+  #   # When true, only the custom CA is trusted (blocks public services)
+  #   disableSystemCAs: false
+  #
+  #   # SSL verification (secure, do not disable in production)
+  #   # When false (default), SSL certificates are verified (recommended)
+  #   # When true, SSL verification is disabled (INSECURE, dev/test only)
+  #   disableVerify: false
+
+---
+# Example Agent using the SAP AI Core ModelConfig
+# This agent can be invoked through the kagent A2A protocol
+
+apiVersion: kagent.dev/v1alpha2
+kind: Agent
+metadata:
+  name: sap-assistant
+  namespace: kagent
+spec:
+  # Framework selection (ADK, LangGraph, or CrewAI)
+  framework: ADK
+
+  # Reference to the ModelConfig created above
+  modelConfigName: sap-ai-core-gpt4
+
+  # Agent card for A2A protocol
+  card:
+    name: sap-assistant
+    description: AI assistant powered by SAP AI Core
+
+  # Optional: Agent configuration
+  config:
+    systemMessage: |
+      You are a helpful AI assistant running on SAP AI Core.
+      You provide accurate, concise answers and follow best practices.
+    temperature: 0.7
+    maxTokens: 2000
+
+---
+# To create these resources, run:
+#
+#   kubectl apply -f examples/sap-ai-core-modelconfig.yaml
+#
+# To verify the agent is running:
+#
+#   kubectl get agents -n kagent
+#   kubectl get pods -n kagent -l kagent.dev/agent=sap-assistant
+#
+# To view agent logs:
+#
+#   kubectl logs -n kagent -l kagent.dev/agent=sap-assistant -f
+#
+# To invoke the agent (using kagent CLI):
+#
+#   kagent invoke sap-assistant "Hello, how are you?"
+#
+# To delete these resources:
+#
+#   kubectl delete -f examples/sap-ai-core-modelconfig.yaml
