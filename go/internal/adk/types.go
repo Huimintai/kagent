@@ -70,6 +70,7 @@ const (
 	ModelTypeOllama          = "ollama"
 	ModelTypeGemini          = "gemini"
 	ModelTypeBedrock         = "bedrock"
+	ModelTypeSAPAICore       = "sap_ai_core"
 )
 
 func (o *OpenAI) MarshalJSON() ([]byte, error) {
@@ -208,6 +209,43 @@ func (b *Bedrock) GetType() string {
 	return ModelTypeBedrock
 }
 
+type SAPAICore struct {
+	BaseModel
+	BaseUrl          string `json:"base_url"`
+	TokenUrl         string `json:"token_url"`
+	ResourceGroup    string `json:"resource_group,omitempty"`
+	DeploymentId     string `json:"deployment_id,omitempty"`
+	ModelVersion     string `json:"model_version,omitempty"`
+	ClientIdentifier string `json:"client_identifier,omitempty"`
+}
+
+func (s *SAPAICore) MarshalJSON() ([]byte, error) {
+	data := map[string]any{
+		"type":      ModelTypeSAPAICore,
+		"model":     s.Model,
+		"headers":   s.Headers,
+		"base_url":  s.BaseUrl,
+		"token_url": s.TokenUrl,
+	}
+	if s.ResourceGroup != "" {
+		data["resource_group"] = s.ResourceGroup
+	}
+	if s.DeploymentId != "" {
+		data["deployment_id"] = s.DeploymentId
+	}
+	if s.ModelVersion != "" {
+		data["model_version"] = s.ModelVersion
+	}
+	if s.ClientIdentifier != "" {
+		data["client_identifier"] = s.ClientIdentifier
+	}
+	return json.Marshal(data)
+}
+
+func (s *SAPAICore) GetType() string {
+	return ModelTypeSAPAICore
+}
+
 func ParseModel(bytes []byte) (Model, error) {
 	var model BaseModel
 	if err := json.Unmarshal(bytes, &model); err != nil {
@@ -262,6 +300,12 @@ func ParseModel(bytes []byte) (Model, error) {
 			return nil, err
 		}
 		return &bedrock, nil
+	case ModelTypeSAPAICore:
+		var sapAICore SAPAICore
+		if err := json.Unmarshal(bytes, &sapAICore); err != nil {
+			return nil, err
+		}
+		return &sapAICore, nil
 	}
 	return nil, fmt.Errorf("unknown model type: %s", model.Type)
 }

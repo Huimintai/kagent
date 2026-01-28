@@ -1008,6 +1008,58 @@ func (a *adkApiTranslator) translateModel(ctx context.Context, namespace, modelC
 		populateTLSFields(&bedrock.BaseModel, model.Spec.TLS)
 
 		return bedrock, modelDeploymentData, secretHashBytes, nil
+	case v1alpha2.ModelProviderSAPAICore:
+		if model.Spec.SAPAICore == nil {
+			return nil, nil, nil, fmt.Errorf("SAPAICore model config is required")
+		}
+
+		if model.Spec.APIKeySecret != "" {
+			secret := &corev1.Secret{}
+			if err := a.kube.Get(ctx, types.NamespacedName{Namespace: namespace, Name: model.Spec.APIKeySecret}, secret); err != nil {
+				return nil, nil, nil, fmt.Errorf("failed to get SAP AI Core credentials secret: %w", err)
+			}
+
+			modelDeploymentData.EnvVars = append(modelDeploymentData.EnvVars, corev1.EnvVar{
+				Name: "SAP_AI_CORE_CLIENT_ID",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: model.Spec.APIKeySecret,
+						},
+						Key: "client_id",
+					},
+				},
+			})
+			modelDeploymentData.EnvVars = append(modelDeploymentData.EnvVars, corev1.EnvVar{
+				Name: "SAP_AI_CORE_CLIENT_SECRET",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: model.Spec.APIKeySecret,
+						},
+						Key: "client_secret",
+					},
+				},
+			})
+		}
+
+		sapAICore := &adk.SAPAICore{
+			BaseModel: adk.BaseModel{
+				Model:   model.Spec.Model,
+				Headers: model.Spec.DefaultHeaders,
+			},
+			BaseUrl:          model.Spec.SAPAICore.BaseUrl,
+			TokenUrl:         model.Spec.SAPAICore.TokenUrl,
+			ResourceGroup:    model.Spec.SAPAICore.ResourceGroup,
+			DeploymentId:     model.Spec.SAPAICore.DeploymentId,
+			ModelVersion:     model.Spec.SAPAICore.ModelVersion,
+			ClientIdentifier: model.Spec.SAPAICore.ClientIdentifier,
+		}
+
+		// Populate TLS fields in BaseModel
+		populateTLSFields(&sapAICore.BaseModel, model.Spec.TLS)
+
+		return sapAICore, modelDeploymentData, secretHashBytes, nil
 	}
 
 	return nil, nil, nil, fmt.Errorf("unknown model provider: %s", model.Spec.Provider)
