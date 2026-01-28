@@ -100,10 +100,25 @@ class Bedrock(BaseLLM):
     type: Literal["bedrock"]
 
 
+class SAPAICore(BaseLLM):
+    """SAP AI Core provider configuration.
+
+    Requires SAP_AI_CORE_CLIENT_ID and SAP_AI_CORE_CLIENT_SECRET environment variables.
+    """
+
+    type: Literal["sap_ai_core"]
+    base_url: str
+    token_url: str
+    resource_group: str = "default"
+    deployment_id: str | None = None
+    model_version: str = "latest"
+    client_identifier: str = "kagent"
+
+
 class AgentConfig(BaseModel):
-    model: Union[OpenAI, Anthropic, GeminiVertexAI, GeminiAnthropic, Ollama, AzureOpenAI, Gemini, Bedrock] = Field(
-        discriminator="type"
-    )
+    model: Union[
+        OpenAI, Anthropic, GeminiVertexAI, GeminiAnthropic, Ollama, AzureOpenAI, Gemini, Bedrock, SAPAICore
+    ] = Field(discriminator="type")
     description: str
     instruction: str
     http_tools: list[HttpMcpServerConfig] | None = None  # Streamable HTTP MCP tools
@@ -256,6 +271,22 @@ class AgentConfig(BaseModel):
         elif self.model.type == "bedrock":
             # LiteLLM handles Bedrock via boto3 internally when model starts with "bedrock/"
             model = LiteLlm(model=f"bedrock/{self.model.model}", extra_headers=extra_headers)
+        elif self.model.type == "sap_ai_core":
+            from .models._sapaicore import SAPAICoreModel
+
+            model = SAPAICoreModel(
+                model=self.model.model,
+                base_url=self.model.base_url,
+                token_url=self.model.token_url,
+                resource_group=self.model.resource_group,
+                deployment_id=self.model.deployment_id,
+                model_version=self.model.model_version,
+                client_identifier=self.model.client_identifier,
+                default_headers=extra_headers,
+                tls_disable_verify=self.model.tls_disable_verify,
+                tls_ca_cert_path=self.model.tls_ca_cert_path,
+                tls_disable_system_cas=self.model.tls_disable_system_cas,
+            )
         else:
             raise ValueError(f"Invalid model type: {self.model.type}")
         return Agent(
