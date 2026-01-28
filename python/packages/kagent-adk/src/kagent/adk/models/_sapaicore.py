@@ -12,7 +12,7 @@ from google.adk.models import BaseLlm
 from google.adk.models.llm_response import LlmResponse
 from google.genai import types
 from openai import AsyncOpenAI, DefaultAsyncHttpxClient
-from pydantic import Field
+from pydantic import Field, PrivateAttr
 
 from ._openai import (
     _convert_content_to_openai_messages,
@@ -61,9 +61,9 @@ class SAPAICoreModel(BaseLlm):
     tls_disable_system_cas: Optional[bool] = None
 
     # Private fields for caching
-    _token_getter: Optional[Any] = Field(default=None, exclude=True)
-    _http_client: Optional[httpx.Client] = Field(default=None, exclude=True)
-    _resolved_deployment_id: Optional[str] = Field(default=None, exclude=True)
+    _token_getter: Optional[Any] = PrivateAttr(default=None)
+    _http_client: Optional[httpx.Client] = PrivateAttr(default=None)
+    _resolved_deployment_id: Optional[str] = PrivateAttr(default=None)
 
     def __init__(self, **data):
         """Initialize SAP AI Core model adapter."""
