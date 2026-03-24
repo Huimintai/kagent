@@ -20,6 +20,8 @@ import type { TokenStats, Session, ChatStatus, ToolDecision } from "@/types";
 import StatusDisplay from "./StatusDisplay";
 import { createSession, getSessionTasks, checkSessionExists } from "@/app/actions/sessions";
 import { getCurrentUserId } from "@/app/actions/utils";
+import { getServerUserId } from "@/app/actions/user";
+import { useUserStore } from "@/lib/userStore";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { createMessageHandlers, extractMessagesFromTasks, extractApprovalMessagesFromTasks, extractTokenStatsFromTasks, createMessage, ADKMetadata, ProcessedToolCallData } from "@/lib/messageHandlers";
@@ -89,6 +91,13 @@ export default function ChatInterface({ selectedAgentName, selectedNamespace, se
     }
   }), [selectedNamespace, selectedAgentName]);
 
+  // P1: Initialize userId from server-side headers (oauth2-proxy X-Auth-Request-Email)
+  const { setUserId, initialized: userInitialized } = useUserStore();
+  useEffect(() => {
+    if (!userInitialized) {
+      getServerUserId().then(id => setUserId(id));
+    }
+  }, [userInitialized, setUserId]);
   useEffect(() => {
     async function initializeChat() {
       setSessionStats({ total: 0, prompt: 0, completion: 0 });

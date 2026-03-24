@@ -1,7 +1,21 @@
 import { getBackendUrl } from "@/lib/utils";
 
 export async function getCurrentUserId() {
-  // TODO: this should come from login state
+  try {
+    // Dynamic import to avoid bundling next/headers in client components.
+    // next/headers is only available in Server Components / Server Actions.
+    const { headers } = await import('next/headers');
+    const headersList = await headers();
+    // oauth2-proxy passes user email via X-Auth-Request-Email (set by --set-xauthrequest=true)
+    const email = headersList.get('x-auth-request-email');
+    if (email) return email;
+    // Fallback: oauth2-proxy user header
+    const user = headersList.get('x-auth-request-user');
+    if (user) return user;
+  } catch {
+    // headers() throws when called outside of a request context (e.g. client component, build time)
+  }
+  // Fallback: local development without oauth2-proxy
   return "admin@kagent.dev";
 }
 

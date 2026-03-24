@@ -2,6 +2,7 @@ import { create } from 'zustand'
 
 interface UserStore {
   userId: string
+  initialized: boolean
   setUserId: (userId: string) => void
 }
 
@@ -16,10 +17,11 @@ const getInitialUserId = () => {
 
 export const useUserStore = create<UserStore>((set) => ({
   userId: getInitialUserId(),
+  initialized: false,
   setUserId: (userId: string) => {
     if (typeof window !== 'undefined') {
       localStorage.setItem(USER_ID_KEY, userId)
     }
-    set({ userId })
+    set({ userId, initialized: true })
   }
 }))

@@ -13,15 +13,36 @@ export async function POST(
     const backendUrl = getBackendUrl();
     const targetUrl = `${backendUrl}/a2a/${namespace}/${agentName}/`;
 
+    // Build headers for backend request, propagating auth-related headers from the original request
+    const backendHeaders: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Accept': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'User-Agent': 'kagent-ui',
+    };
+
+    // Propagate Authorization header (from oauth2-proxy via ingress) for per-user K8s auth
+    const authHeader = request.headers.get('Authorization');
+    if (authHeader) {
+      backendHeaders['Authorization'] = authHeader;
+    }
+
+    // Propagate user identity headers
+    const userIdHeader = request.headers.get('X-Auth-Request-User') || request.headers.get('X-User-Id');
+    if (userIdHeader) {
+      backendHeaders['X-User-Id'] = userIdHeader;
+    }
+
+    // Propagate email header for user-scoped session isolation
+    const emailHeader = request.headers.get('X-Auth-Request-Email');
+    if (emailHeader) {
+      backendHeaders['X-Auth-Request-Email'] = emailHeader;
+    }
+
     const backendResponse = await fetch(targetUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-        'User-Agent': 'kagent-ui',
-      },
+      headers: backendHeaders,
       body: JSON.stringify(a2aRequest),
     });
 
