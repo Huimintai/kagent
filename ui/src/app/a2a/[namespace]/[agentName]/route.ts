@@ -11,7 +11,7 @@ export async function POST(
     const a2aRequest = await request.json();
 
     const backendUrl = getBackendUrl();
-    const targetUrl = `${backendUrl}/a2a/${namespace}/${agentName}/`;
+    let targetUrl = `${backendUrl}/a2a/${namespace}/${agentName}/`;
 
     // Build headers for backend request, propagating auth-related headers from the original request
     const backendHeaders: Record<string, string> = {
@@ -23,19 +23,24 @@ export async function POST(
     };
 
     // Propagate Authorization header (from oauth2-proxy via ingress) for per-user K8s auth
-    const authHeader = request.headers.get('Authorization');
+    const authHeader = request.headers.get('authorization');
     if (authHeader) {
       backendHeaders['Authorization'] = authHeader;
     }
 
     // Propagate user identity headers
-    const userIdHeader = request.headers.get('X-Auth-Request-User') || request.headers.get('X-User-Id');
+    const userIdHeader = request.headers.get('x-auth-request-user') || 
+                         request.headers.get('x-user-id') ||
+                         request.headers.get('x-auth-request-email') ||
+                         request.headers.get('x-forwarded-email') ||
+                         request.headers.get('x-forwarded-user');
     if (userIdHeader) {
       backendHeaders['X-User-Id'] = userIdHeader;
+      targetUrl += `?user_id=${encodeURIComponent(userIdHeader)}`;
     }
 
     // Propagate email header for user-scoped session isolation
-    const emailHeader = request.headers.get('X-Auth-Request-Email');
+    const emailHeader = request.headers.get('x-auth-request-email');
     if (emailHeader) {
       backendHeaders['X-Auth-Request-Email'] = emailHeader;
     }
