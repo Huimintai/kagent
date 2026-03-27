@@ -25,7 +25,11 @@ export default function SessionsSidebar({
   isLoadingSessions = false 
 }: SessionsSidebarProps) {
     return (
-    <Sidebar side="left" collapsible="offcanvas">
+    <Sidebar 
+      side="left"
+      collapsible="offcanvas"
+      className="md:top-[101px] md:h-[calc(100svh-101px)]"
+    >
       <SidebarHeader>
         <AgentSwitcher currentAgent={currentAgent} allAgents={allAgents} />
       </SidebarHeader>

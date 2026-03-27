@@ -11,7 +11,7 @@ export async function POST(
     const a2aRequest = await request.json();
 
     const backendUrl = getBackendUrl();
-    const targetUrl = `${backendUrl}/a2a/${namespace}/${agentName}/`;
+    let targetUrl = `${backendUrl}/a2a/${namespace}/${agentName}/`;
 
     // Build headers for backend request, propagating auth-related headers from the original request
     const backendHeaders: Record<string, string> = {
@@ -29,9 +29,14 @@ export async function POST(
     }
 
     // Propagate user identity headers
-    const userIdHeader = request.headers.get('X-Auth-Request-User') || request.headers.get('X-User-Id');
+    const userIdHeader = request.headers.get('X-Auth-Request-User') || 
+                         request.headers.get('X-User-Id') ||
+                         request.headers.get('X-Auth-Request-Email') ||
+                         request.headers.get('X-Forwarded-Email') ||
+                         request.headers.get('X-Forwarded-User');
     if (userIdHeader) {
       backendHeaders['X-User-Id'] = userIdHeader;
+      targetUrl += `?user_id=${encodeURIComponent(userIdHeader)}`;
     }
 
     // Propagate email header for user-scoped session isolation

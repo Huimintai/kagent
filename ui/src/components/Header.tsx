@@ -4,17 +4,22 @@ import Link from "next/link";
 import { Button } from "./ui/button";
 import KAgentLogoWithText from "./kagent-logo-text";
 import KagentLogo from "./kagent-logo";
-import { Plus, Menu, X, ChevronDown, Brain, Server, Eye, Hammer, HomeIcon } from "lucide-react";
+import { Plus, Menu, X, ChevronDown, Brain, Server, Eye, Hammer, HomeIcon, UserCircle2, LogOut } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
+import { useUserStore } from "@/lib/userStore";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
 export function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const userId = useUserStore((state) => state.userId);
+  const clearLoginSession = useUserStore((state) => state.clearLoginSession);
 
   const toggleMenu = () => {
     setIsMenuOpen(!isMenuOpen);
@@ -130,7 +135,26 @@ export function Header() {
               <Link href="https://discord.gg/Fu3k65f2k3" target="_blank">Community</Link>
             </Button>
             
-            <ThemeToggle />
+            <div className="flex items-center gap-2">
+              <ThemeToggle />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" aria-label="User menu">
+                    <UserCircle2 className="h-[1.2rem] w-[1.2rem]" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="max-w-64">
+                  <DropdownMenuItem disabled className="break-all">
+                    {userId}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={clearLoginSession}>
+                    <LogOut className="h-4 w-4" />
+                    Sign out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
         </div>
         
@@ -222,8 +246,32 @@ export function Header() {
                 <Link href="https://discord.gg/Fu3k65f2k3" target="_blank" onClick={handleMobileLinkClick}>Community</Link>
               </Button>
 
-              <div className="flex items-center justify-end py-2">
-                 <ThemeToggle />
+              <div className="flex items-center justify-end gap-2 py-2">
+                <ThemeToggle />
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="icon" aria-label="User menu">
+                      <UserCircle2 className="h-[1.2rem] w-[1.2rem]" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="max-w-64">
+                    <DropdownMenuLabel>Signed in as</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem disabled className="break-all">
+                      {userId}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => {
+                        clearLoginSession()
+                        handleMobileLinkClick()
+                      }}
+                    >
+                      <LogOut className="h-4 w-4" />
+                      Sign out
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
           </div>
