@@ -23,24 +23,24 @@ export async function POST(
     };
 
     // Propagate Authorization header (from oauth2-proxy via ingress) for per-user K8s auth
-    const authHeader = request.headers.get('authorization');
+    const authHeader = request.headers.get('Authorization');
     if (authHeader) {
       backendHeaders['Authorization'] = authHeader;
     }
 
     // Propagate user identity headers
-    const userIdHeader = request.headers.get('x-auth-request-user') || 
-                         request.headers.get('x-user-id') ||
-                         request.headers.get('x-auth-request-email') ||
-                         request.headers.get('x-forwarded-email') ||
-                         request.headers.get('x-forwarded-user');
+    const userIdHeader = request.headers.get('X-Auth-Request-User') || 
+                         request.headers.get('X-User-Id') ||
+                         request.headers.get('X-Auth-Request-Email') ||
+                         request.headers.get('X-Forwarded-Email') ||
+                         request.headers.get('X-Forwarded-User');
     if (userIdHeader) {
       backendHeaders['X-User-Id'] = userIdHeader;
       targetUrl += `?user_id=${encodeURIComponent(userIdHeader)}`;
     }
 
     // Propagate email header for user-scoped session isolation
-    const emailHeader = request.headers.get('x-auth-request-email');
+    const emailHeader = request.headers.get('X-Auth-Request-Email');
     if (emailHeader) {
       backendHeaders['X-Auth-Request-Email'] = emailHeader;
     }
