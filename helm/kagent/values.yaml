@@ -81,6 +81,8 @@ database:
         pullPolicy: IfNotPresent
       # -- PersistentVolumeClaim size for demo PostgreSQL data
       storage: 500Mi
+      # -- StorageClass for the PostgreSQL PVC. Defaults to the cluster default when empty.
+      storageClassName: ""
       # The database name, user, and password are hardcoded for the bundled instance (all: "kagent").
       # This is intentional for a dev/eval setup. Switch to an external database for production.
       # -- Resource requests/limits for the demo PostgreSQL container
@@ -91,6 +93,34 @@ database:
         limits:
           cpu: 500m
           memory: 512Mi
+      # -- Pod-level security context for the bundled PostgreSQL deployment.
+      podSecurityContext:
+        fsGroup: 999
+        runAsUser: 999
+        runAsGroup: 999
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      # -- Container-level security context for the bundled PostgreSQL container.
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+        seccompProfile:
+          type: RuntimeDefault
+
+# ==============================================================================
+# RBAC CONFIGURATION
+# ==============================================================================
+
+rbac:
+  # -- If true, creates ClusterRole and ClusterRoleBinding resources.
+  # If false, creates Role and RoleBinding resources instead.
+  clusterScoped: true
+  # -- When clusterScoped is false, specify additional namespaces to create Roles and RoleBindings in.
+  # If empty, defaults to the release namespace.
+  namespaces: []
 
 # ==============================================================================
 # CONTROLLER CONFIGURATION
@@ -109,6 +139,14 @@ controller:
     # Precedence: agent-level serviceAccountName > this default > auto-created SA.
     # @default -- "" (auto-create per-agent ServiceAccount)
     serviceAccountName: ""
+    # -- Default labels applied to all agent pod templates.
+    # Per-agent labels in the Agent CRD take precedence over these defaults.
+    # @default -- {} (no extra labels)
+    podLabels: {}
+    # Example:
+    #   podLabels:
+    #     team: platform
+    #     environment: production
   # -- The base URL of the A2A Server endpoint, as advertised to clients.
   # @default -- `http://<fullname>-controller.<namespace>.svc.cluster.local:<port>`
   a2aBaseUrl: ""
