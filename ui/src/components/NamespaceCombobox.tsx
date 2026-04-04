@@ -18,6 +18,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { listNamespaces, type NamespaceResponse } from "@/app/actions/namespaces";
+import { ALLOWED_NAMESPACE } from "@/lib/appConfig";
 
 interface NamespaceComboboxProps {
   value?: string;
@@ -51,15 +52,25 @@ export function NamespaceCombobox({
           const sorted = [...(response.data || [])].sort((a, b) =>
             a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
           );
-          setNamespaces(sorted);
+
+          let filtered = sorted;
+          if (ALLOWED_NAMESPACE) {
+            filtered = sorted.filter((ns) => ns.name === ALLOWED_NAMESPACE);
+            if (filtered.length === 0) {
+              filtered = [{ name: ALLOWED_NAMESPACE, status: "Active" }];
+            }
+          }
+          setNamespaces(filtered);
           setError(null);
           onError?.(null);
-  
+
           // Set a default namespace if none is currently selected
           if (!value) {
-            const names = sorted.map((ns) => ns.name);
+            const names = filtered.map((ns) => ns.name);
             let defaultNamespace: string | undefined;
-            if (names.includes("kagent")) {
+            if (ALLOWED_NAMESPACE) {
+              defaultNamespace = ALLOWED_NAMESPACE;
+            } else if (names.includes("kagent")) {
               defaultNamespace = "kagent";
             } else if (names.includes("default")) {
               defaultNamespace = "default";
@@ -90,6 +101,14 @@ export function NamespaceCombobox({
   }, [onError]);
 
   const selectedNamespace = namespaces.find((ns) => ns.name === value);
+
+  if (ALLOWED_NAMESPACE && !loading) {
+    return (
+      <div className="flex items-center gap-2 w-full py-2 px-3 border rounded-md bg-muted text-sm">
+        <span>{value || ALLOWED_NAMESPACE}</span>
+      </div>
+    );
+  }
 
   return (
     <Popover open={open} onOpenChange={setOpen}>

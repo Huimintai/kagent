@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
+import { Loader2, Info } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { LoadingState } from "@/components/LoadingState";
 import { ErrorState } from "@/components/ErrorState";
@@ -31,6 +31,8 @@ import { BasicInfoSection } from '@/components/models/new/BasicInfoSection';
 import { AuthSection } from '@/components/models/new/AuthSection';
 import { ParamsSection } from '@/components/models/new/ParamsSection';
 import { k8sRefUtils } from "@/lib/k8sUtils";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { DISABLE_MODEL_CREATION, MODEL_CREATION_DISABLED_MESSAGE } from "@/lib/appConfig";
 
 interface ValidationErrors {
   name?: string;
@@ -641,6 +643,23 @@ function ModelPageContent() {
 
   if (error) {
     return <ErrorState message={error} />;
+  }
+
+  if (DISABLE_MODEL_CREATION && !isEditMode) {
+    return (
+      <div className="min-h-screen p-8">
+        <div className="max-w-4xl mx-auto">
+          <Alert className="mb-6">
+            <Info className="h-4 w-4" />
+            <AlertTitle>Model Creation Disabled</AlertTitle>
+            <AlertDescription>{MODEL_CREATION_DISABLED_MESSAGE}</AlertDescription>
+          </Alert>
+          <Button variant="outline" onClick={() => router.push("/models")}>
+            Back to Models
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   if (isLoading && !isEditMode) {
