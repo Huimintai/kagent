@@ -252,6 +252,7 @@ class EmbeddingConfig(BaseModel):
     model: str
     provider: str
     base_url: str | None = None
+    auth_url: str | None = None
 
 
 class MemoryConfig(BaseModel):

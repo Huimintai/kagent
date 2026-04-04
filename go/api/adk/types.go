@@ -354,6 +354,7 @@ type EmbeddingConfig struct {
 	Provider string `json:"provider"`
 	Model    string `json:"model"`
 	BaseUrl  string `json:"base_url,omitempty"`
+	AuthUrl  string `json:"auth_url,omitempty"`
 }
 
 func (e *EmbeddingConfig) UnmarshalJSON(data []byte) error {
@@ -362,12 +363,14 @@ func (e *EmbeddingConfig) UnmarshalJSON(data []byte) error {
 		Provider string `json:"provider"`
 		Model    string `json:"model"`
 		BaseUrl  string `json:"base_url"`
+		AuthUrl  string `json:"auth_url"`
 	}
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
 	e.Model = tmp.Model
 	e.BaseUrl = tmp.BaseUrl
+	e.AuthUrl = tmp.AuthUrl
 	if tmp.Provider != "" {
 		e.Provider = tmp.Provider
 	} else {
@@ -405,6 +408,7 @@ func ModelToEmbeddingConfig(m Model) *EmbeddingConfig {
 	case *SAPAICore:
 		e.Model = v.Model
 		e.BaseUrl = v.BaseUrl
+		e.AuthUrl = v.AuthUrl
 	default:
 		e.Model = ""
 	}

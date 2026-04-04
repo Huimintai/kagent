@@ -368,6 +368,9 @@ class KagentMemoryService(BaseMemoryService):
             return await self._embed_ollama(model_name, texts, api_base)
         if provider in ("vertex_ai", "gemini"):
             return await self._embed_google(provider, model_name, texts)
+        if provider == "sap_ai_core":
+            auth_url = getattr(self.embedding_config, "auth_url", None) if self.embedding_config else None
+            return await self._embed_sap_ai_core(model_name, texts, api_base, auth_url)
         # Unknown provider — try OpenAI-compatible as a fallback
         logger.warning("Unknown embedding provider '%s'; attempting OpenAI-compatible call.", provider)
         return await self._embed_openai("openai", model_name, texts, api_base)
@@ -413,6 +416,85 @@ class KagentMemoryService(BaseMemoryService):
         client = ollama.AsyncClient(host=host)
         result = await client.embed(model=model_name, input=texts)
         return list(result.embeddings)
+
+    async def _embed_sap_ai_core(
+        self,
+        model_name: str,
+        texts: List[str],
+        api_base: Optional[str],
+        auth_url: Optional[str],
+    ) -> List[List[float]]:
+        """Embed using SAP AI Core inference endpoint (OpenAI-compatible).
+
+        Resolves the embedding deployment URL by listing deployments filtered by
+        scenarioId=azure-openai (the SAP AI Core embedding scenario), then calls
+        the OpenAI-compatible embeddings endpoint.
+        """
+        import os
+
+        import httpx
+        from openai import AsyncOpenAI
+
+        client_id = os.environ.get("SAP_AI_CORE_CLIENT_ID", "")
+        client_secret = os.environ.get("SAP_AI_CORE_CLIENT_SECRET", "")
+
+        if not client_id or not client_secret:
+            raise ValueError("SAP AI Core requires SAP_AI_CORE_CLIENT_ID and SAP_AI_CORE_CLIENT_SECRET env vars")
+
+        if not api_base:
+            raise ValueError("SAP AI Core embedding requires base_url")
+
+        from kagent.adk.models._sap_ai_core import _get_oauth_token_sync
+
+        resolved_auth_url = auth_url or os.environ.get("SAP_AI_CORE_AUTH_URL", "")
+        if not resolved_auth_url:
+            raise ValueError("SAP AI Core embedding requires auth_url or SAP_AI_CORE_AUTH_URL env var")
+
+        token, _expires_at = await asyncio.to_thread(
+            _get_oauth_token_sync, resolved_auth_url, client_id, client_secret
+        )
+
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "AI-Resource-Group": "default",
+        }
+
+        # List deployments to find the azure-openai embedding deployment URL
+        base = api_base.rstrip("/")
+        async with httpx.AsyncClient(timeout=30) as http:
+            resp = await http.get(f"{base}/v2/lm/deployments", headers=headers)
+            resp.raise_for_status()
+            deployments = resp.json()
+
+        deployment_url = None
+        for dep in deployments.get("resources", []):
+            if dep.get("status") != "RUNNING":
+                continue
+            url = dep.get("deploymentUrl", "")
+            if not url:
+                continue
+            # Match by model name in details.resources.backendDetails.model.name
+            backend_model = (
+                dep.get("details", {})
+                .get("resources", {})
+                .get("backendDetails", {})
+                .get("model", {})
+                .get("name", "")
+            )
+            if backend_model == model_name:
+                deployment_url = url
+                break
+
+        if not deployment_url:
+            raise ValueError(f"No running deployment found in SAP AI Core for embedding model '{model_name}'")
+
+        client = AsyncOpenAI(
+            api_key=token,
+            base_url=deployment_url.rstrip("/") + "/v1",
+            default_headers={"AI-Resource-Group": "default"},
+        )
+        response = await client.embeddings.create(model=model_name, input=texts)
+        return [item.embedding for item in response.data]
 
     async def _embed_google(
         self,
