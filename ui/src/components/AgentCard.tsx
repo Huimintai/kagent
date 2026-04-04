@@ -16,9 +16,12 @@ import { MemoriesDialog } from "@/components/MemoriesDialog";
 import KagentLogo from "@/components/kagent-logo";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Brain, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { Brain, MoreHorizontal, Pencil, Trash2, Shield } from "lucide-react";
 import { k8sRefUtils } from "@/lib/k8sUtils";
 import { cn } from "@/lib/utils";
+import { isAgentProtected } from "@/lib/appConfig";
+import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface AgentCardProps {
   agentResponse: AgentResponse;
@@ -37,6 +40,7 @@ export function AgentCard({ agentResponse: { agent, model, modelProvider, deploy
   const isBYO = agent.spec?.type === "BYO";
   const byoImage = isBYO ? agent.spec?.byo?.deployment?.image : undefined;
   const isReady = deploymentReady && accepted;
+  const protectedAgent = isAgentProtected(agent.metadata.name || "");
 
   const handleEditClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -73,6 +77,19 @@ export function AgentCard({ agentResponse: { agent, model, modelProvider, deploy
         <CardTitle className="flex items-center gap-2 flex-1 min-w-0">
           <KagentLogo className="h-5 w-5 flex-shrink-0" />
           <span className="truncate">{agentRef}</span>
+          {protectedAgent && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge variant="secondary" className="flex-shrink-0 gap-1 text-xs">
+                  <Shield className="h-3 w-3" />
+                  Protected
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent>
+                This agent is protected and cannot be edited or deleted.
+              </TooltipContent>
+            </Tooltip>
+          )}
         </CardTitle>
         <div className="relative z-30 opacity-0 group-hover:opacity-100 transition-opacity">
           <DropdownMenu>
@@ -88,8 +105,9 @@ export function AgentCard({ agentResponse: { agent, model, modelProvider, deploy
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
               <DropdownMenuItem
-                onClick={handleEditClick}
-                className="cursor-pointer"
+                onClick={protectedAgent ? undefined : handleEditClick}
+                className={cn("cursor-pointer", protectedAgent && "opacity-50 cursor-not-allowed")}
+                disabled={protectedAgent}
               >
                 <Pencil className="mr-2 h-4 w-4" />
                 Edit
@@ -107,12 +125,13 @@ export function AgentCard({ agentResponse: { agent, model, modelProvider, deploy
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                onClick={(e) => {
+                onClick={protectedAgent ? undefined : (e) => {
                   e.preventDefault();
                   e.stopPropagation();
                   setDeleteOpen(true);
                 }}
-                className="cursor-pointer text-red-500 focus:text-red-500"
+                className={cn("cursor-pointer text-red-500 focus:text-red-500", protectedAgent && "opacity-50 cursor-not-allowed")}
+                disabled={protectedAgent}
               >
                 <Trash2 className="mr-2 h-4 w-4" />
                 Delete
@@ -160,6 +179,7 @@ export function AgentCard({ agentResponse: { agent, model, modelProvider, deploy
         namespace={agent.metadata.namespace || ''}
         externalOpen={deleteOpen}
         onExternalOpenChange={setDeleteOpen}
+        disabled={protectedAgent}
       />
 
       <MemoriesDialog

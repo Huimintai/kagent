@@ -4,7 +4,8 @@ import Link from "next/link";
 import { Button } from "./ui/button";
 import KAgentLogoWithText from "./kagent-logo-text";
 import KagentLogo from "./kagent-logo";
-import { Plus, Menu, X, ChevronDown, Brain, Server, Eye, Hammer, HomeIcon, UserCircle2, LogOut } from "lucide-react";
+import { Plus, Menu, X, ChevronDown, Brain, Server, Eye, Hammer, HomeIcon, UserCircle2, LogOut, Ban } from "lucide-react";
+import { DISABLE_MODEL_CREATION } from "@/lib/appConfig";
 import { ThemeToggle } from "./ThemeToggle";
 import { useUserStore } from "@/lib/userStore";
 import {
@@ -75,11 +76,18 @@ export function Header() {
                     New Agent
                   </Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href="/models/new" className="gap-2 cursor-pointer w-full">
-                    <Brain className="h-4 w-4" />
-                    New Model
-                  </Link>
+                <DropdownMenuItem asChild={!DISABLE_MODEL_CREATION} disabled={DISABLE_MODEL_CREATION}>
+                  {DISABLE_MODEL_CREATION ? (
+                    <span className="gap-2 w-full flex items-center">
+                      <Ban className="h-4 w-4" />
+                      New Model
+                    </span>
+                  ) : (
+                    <Link href="/models/new" className="gap-2 cursor-pointer w-full">
+                      <Brain className="h-4 w-4" />
+                      New Model
+                    </Link>
+                  )}
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
                   <Link href="/servers" className="gap-2 cursor-pointer w-full">
@@ -223,11 +231,18 @@ export function Header() {
                       New Agent
                     </Link>
                   </DropdownMenuItem>
-                  <DropdownMenuItem asChild onClick={handleMobileLinkClick}>
-                    <Link href="/models/new" className="gap-2 cursor-pointer w-full">
-                      <Brain className="h-4 w-4" />
-                      New Model
-                    </Link>
+                  <DropdownMenuItem asChild={!DISABLE_MODEL_CREATION} disabled={DISABLE_MODEL_CREATION} onClick={DISABLE_MODEL_CREATION ? undefined : handleMobileLinkClick}>
+                    {DISABLE_MODEL_CREATION ? (
+                      <span className="gap-2 w-full flex items-center">
+                        <Ban className="h-4 w-4" />
+                        New Model
+                      </span>
+                    ) : (
+                      <Link href="/models/new" className="gap-2 cursor-pointer w-full">
+                        <Brain className="h-4 w-4" />
+                        New Model
+                      </Link>
+                    )}
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild onClick={handleMobileLinkClick}>
                     <Link href="/servers/new" className="gap-2 cursor-pointer w-full">

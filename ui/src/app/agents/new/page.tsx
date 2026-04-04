@@ -23,6 +23,7 @@ import { NamespaceCombobox } from "@/components/NamespaceCombobox";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { isAgentProtected, ALLOWED_NAMESPACE } from "@/lib/appConfig";
 
 interface ValidationErrors {
   name?: string;
@@ -93,7 +94,7 @@ function AgentPageContent({ isEditMode, agentName, agentNamespace }: AgentPageCo
 
   const [state, setState] = useState<FormState>({
     name: "",
-    namespace: "default",
+    namespace: ALLOWED_NAMESPACE || "default",
     description: "",
     agentType: "Declarative",
     systemPrompt: isEditMode ? "" : DEFAULT_SYSTEM_PROMPT,
@@ -130,6 +131,13 @@ function AgentPageContent({ isEditMode, agentName, agentNamespace }: AgentPageCo
             setState(prev => ({ ...prev, isLoading: false }));
             return;
           }
+
+          if (isAgentProtected(agentResponse.agent.metadata.name || "")) {
+            toast.error("This agent is protected and cannot be edited.");
+            router.push("/agents");
+            return;
+          }
+
           const agent = agentResponse.agent;
           if (agent) {
             try {

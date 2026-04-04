@@ -6,6 +6,7 @@ import { getTools } from "@/app/actions/tools";
 import type { Agent, Tool, AgentResponse, BaseResponse, ModelConfig, ToolsResponse, AgentType, EnvVar, ContextConfig } from "@/types";
 import { getModelConfigs } from "@/app/actions/modelConfigs";
 import { isResourceNameValid } from "@/lib/utils";
+import { ALLOWED_NAMESPACE } from "@/lib/appConfig";
 
 export interface ValidationErrors {
   name?: string;
@@ -102,7 +103,13 @@ export function AgentsProvider({ children }: AgentsProviderProps) {
         throw new Error(agentsResult.error || "Failed to fetch agents");
       }
 
-      setAgents(agentsResult.data);
+      let agentData = agentsResult.data;
+      if (ALLOWED_NAMESPACE) {
+        agentData = agentData.filter(
+          (a) => a.agent.metadata.namespace === ALLOWED_NAMESPACE
+        );
+      }
+      setAgents(agentData);
       setError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "An unexpected error occurred");

@@ -11,6 +11,8 @@ ARG TOOLS_NODE_VERSION
 
 RUN echo "Installing on $BUILDPLATFORM" \
     && apk add --no-cache curl bash openssl unzip ca-certificates nginx supervisor "nodejs~${TOOLS_NODE_VERSION}" npm \
+    && npm install -g node-gyp \
+    && ln -sf /usr/local/lib/node_modules/node-gyp /usr/lib/node_modules/npm/node_modules/node-gyp \
     && update-ca-certificates
 
 ENV DO_NOT_TRACK=1
@@ -29,6 +31,16 @@ FROM --platform=$BUILDPLATFORM deps AS builder
 
 # Copy source files
 COPY . .
+
+# UI restriction config (set via --build-arg, defaults to unrestricted)
+ARG NEXT_PUBLIC_DISABLE_MODEL_CREATION=""
+ARG NEXT_PUBLIC_MODEL_CREATION_DISABLED_MESSAGE=""
+ARG NEXT_PUBLIC_ALLOWED_NAMESPACE=""
+ARG NEXT_PUBLIC_PROTECTED_AGENTS=""
+ENV NEXT_PUBLIC_DISABLE_MODEL_CREATION=$NEXT_PUBLIC_DISABLE_MODEL_CREATION
+ENV NEXT_PUBLIC_MODEL_CREATION_DISABLED_MESSAGE=$NEXT_PUBLIC_MODEL_CREATION_DISABLED_MESSAGE
+ENV NEXT_PUBLIC_ALLOWED_NAMESPACE=$NEXT_PUBLIC_ALLOWED_NAMESPACE
+ENV NEXT_PUBLIC_PROTECTED_AGENTS=$NEXT_PUBLIC_PROTECTED_AGENTS
 
 # Build the application (native compilation for speed)
 RUN --mount=type=cache,target=/root/.npm,rw \
