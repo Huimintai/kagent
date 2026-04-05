@@ -29,7 +29,7 @@ export function WelcomeStep({ onNext }: WelcomeStepProps) {
                     <div className="text-base text-muted-foreground font-medium">Welcome, <span className="text-primary font-semibold">{userName}</span></div>
                 </div>
             )}
-            <div className="w-full text-center pt-6 pb-2">
+            <div className="w-full text-center pt-6 pb-2 lg:hidden">
                 <h1 className="text-5xl font-bold text-primary tracking-tight">SAP HANA Agent Platform</h1>
             </div>
             <CardHeader className="items-center text-center pt-4 pb-6 border-b">
