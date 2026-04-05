@@ -29,9 +29,12 @@ export function WelcomeStep({ onNext }: WelcomeStepProps) {
                     <div className="text-base text-muted-foreground font-medium">Welcome, <span className="text-primary font-semibold">{userName}</span></div>
                 </div>
             )}
-            <CardHeader className="items-center text-center pt-10 pb-6 border-b">
-                <KAgentLogoWithText className="h-20 w-auto mb-6" />
-                <CardTitle className="text-2xl mb-2">Bringing <span className="font-semibold text-primary">Agentic AI</span> to Cloud Native</CardTitle>
+            <div className="w-full text-center pt-6 pb-2">
+                <h1 className="text-5xl font-bold text-primary tracking-tight">SAP HANA Agent Platform</h1>
+            </div>
+            <CardHeader className="items-center text-center pt-4 pb-6 border-b">
+                <KAgentLogoWithText className="h-10 w-auto mb-3" />
+                <CardTitle className="text-base mb-2">Bringing <span className="font-semibold text-primary">Agentic AI</span> to Cloud Native</CardTitle>
             </CardHeader>
 
             <CardContent className="px-8 pt-8 pb-6">

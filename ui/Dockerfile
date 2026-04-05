@@ -46,7 +46,8 @@ ENV NEXT_PUBLIC_PROTECTED_AGENTS=$NEXT_PUBLIC_PROTECTED_AGENTS
 RUN --mount=type=cache,target=/root/.npm,rw \
     --mount=type=cache,target=/app/ui/.next/cache,rw \
     export NEXT_TELEMETRY_DEBUG=1 \
-    && npm run build \
+    && find /app/ui/.next/cache -mindepth 1 -delete 2>/dev/null || true \
+    && TURBOPACK=0 npm run build \
     && mkdir -p /app/ui/public
 
 ### STAGE 3: Runtime

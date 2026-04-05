@@ -28,10 +28,10 @@ interface OnboardingStateData {
 }
 
 export const K8S_AGENT_DEFAULTS = {
-    name: "my-first-k8s-agent",
+    name: "sap-k8s-assistant",
     namespace: "kagent",
-    description: "This agent can interact with the Kubernetes API to get information about the cluster.",
-    instructions: `You're a friendly and helpful agent that uses Kubernetes tools to answer users questions about the cluster.
+    description: "SAP HANA Agent Platform Kubernetes Assistant for cluster operations.",
+    instructions: `You're a professional SAP HANA Agent Platform assistant that uses Kubernetes tools to answer users questions about the cluster.
 
 # Instructions
 - If user question is unclear, ask for clarification before running any tools

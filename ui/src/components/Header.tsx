@@ -4,8 +4,9 @@ import Link from "next/link";
 import { Button } from "./ui/button";
 import KAgentLogoWithText from "./kagent-logo-text";
 import KagentLogo from "./kagent-logo";
-import { Plus, Menu, X, ChevronDown, Brain, Server, Eye, Hammer, HomeIcon, UserCircle2, LogOut, Ban } from "lucide-react";
+import { Plus, Menu, X, ChevronDown, Brain, Server, Eye, Hammer, HomeIcon, LogOut, Ban } from "lucide-react";
 import { DISABLE_MODEL_CREATION } from "@/lib/appConfig";
+import { Identicon } from "./Identicon";
 import { ThemeToggle } from "./ThemeToggle";
 import { useUserStore } from "@/lib/userStore";
 import {
@@ -37,8 +38,9 @@ export function Header() {
     <nav className="py-4 md:py-8 border-b">
       <div className="max-w-6xl mx-auto px-4 md:px-6">
         <div className="flex justify-between items-center">
-          <Link href="/">
+          <Link href="/" className="flex items-center gap-3">
             <KAgentLogoWithText className="h-5" />
+            <span className="text-sm font-semibold text-muted-foreground hidden lg:block">SAP HANA Agent Platform</span>
           </Link>
           
           {/* Mobile menu button */}
@@ -135,20 +137,13 @@ export function Header() {
             </DropdownMenu>
 
 
-            {/* Other Links */}
-            <Button variant="link" className="text-secondary-foreground" asChild>
-              <Link href="https://github.com/kagent-dev/kagent" target="_blank">Contribute</Link>
-            </Button>
-            <Button variant="link" className="text-secondary-foreground" asChild>
-              <Link href="https://discord.gg/Fu3k65f2k3" target="_blank">Community</Link>
-            </Button>
-            
+
             <div className="flex items-center gap-2">
               <ThemeToggle />
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="icon" aria-label="User menu">
-                    <UserCircle2 className="h-[1.2rem] w-[1.2rem]" />
+                  <Button variant="outline" size="icon" aria-label="User menu" className="overflow-hidden p-0">
+                    <Identicon value={userId || "user"} size={32} />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="max-w-64">
@@ -253,20 +248,13 @@ export function Header() {
                 </DropdownMenuContent>
               </DropdownMenu>
               
-              {/* Mobile Other Links */}
-              <Button variant="ghost" className="text-secondary-foreground justify-start px-1" asChild>
-                <Link href="https://github.com/kagent-dev/kagent" target="_blank" onClick={handleMobileLinkClick}>Contribute</Link>
-              </Button>
-              <Button variant="ghost" className="text-secondary-foreground justify-start px-1" asChild>
-                <Link href="https://discord.gg/Fu3k65f2k3" target="_blank" onClick={handleMobileLinkClick}>Community</Link>
-              </Button>
 
               <div className="flex items-center justify-end gap-2 py-2">
                 <ThemeToggle />
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="icon" aria-label="User menu">
-                      <UserCircle2 className="h-[1.2rem] w-[1.2rem]" />
+                  <Button variant="outline" size="icon" aria-label="User menu" className="overflow-hidden p-0">
+                      <Identicon value={userId || "user"} size={32} />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="max-w-64">
