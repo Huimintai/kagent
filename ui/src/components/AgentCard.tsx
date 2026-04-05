@@ -41,6 +41,7 @@ export function AgentCard({ agentResponse: { agent, model, modelProvider, deploy
   const byoImage = isBYO ? agent.spec?.byo?.deployment?.image : undefined;
   const isReady = deploymentReady && accepted;
   const protectedAgent = isAgentProtected(agent.metadata.name || "");
+  const category = agent.metadata.labels?.["kagent.dev/category"];
 
   const handleEditClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -77,6 +78,11 @@ export function AgentCard({ agentResponse: { agent, model, modelProvider, deploy
         <CardTitle className="flex items-center gap-2 flex-1 min-w-0">
           <KagentLogo className="h-5 w-5 flex-shrink-0" />
           <span className="truncate">{agentRef}</span>
+          {category && (
+            <Badge variant="outline" className="flex-shrink-0 text-xs capitalize">
+              {category}
+            </Badge>
+          )}
           {protectedAgent && (
             <Tooltip>
               <TooltipTrigger asChild>
