@@ -85,6 +85,12 @@ type SkillForAgent struct {
 	// +optional
 	InsecureSkipVerify bool `json:"insecureSkipVerify,omitempty"`
 
+	// Reference to a Secret of type kubernetes.io/dockerconfigjson containing
+	// OCI registry credentials. Used by krane in the skills-init container
+	// to authenticate against private registries.
+	// +optional
+	OCIAuthSecretRef *corev1.LocalObjectReference `json:"ociAuthSecretRef,omitempty"`
+
 	// The list of skill images to fetch.
 	// +kubebuilder:validation:MaxItems=20
 	// +kubebuilder:validation:MinItems=1

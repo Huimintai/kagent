@@ -10222,6 +10222,23 @@ spec:
                       Fetch images insecurely from registries (allowing HTTP and skipping TLS verification).
                       Meant for development and testing purposes only.
                     type: boolean
+                  ociAuthSecretRef:
+                    description: |-
+                      Reference to a Secret of type kubernetes.io/dockerconfigjson containing
+                      OCI registry credentials. Used by krane in the skills-init container
+                      to authenticate against private registries.
+                    properties:
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                    type: object
+                    x-kubernetes-map-type: atomic
                   refs:
                     description: The list of skill images to fetch.
                     items:
