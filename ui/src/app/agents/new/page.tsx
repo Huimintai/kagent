@@ -22,8 +22,11 @@ import { toast } from "sonner";
 import { NamespaceCombobox } from "@/components/NamespaceCombobox";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { isAgentProtected, ALLOWED_NAMESPACE } from "@/lib/appConfig";
+
+const PRIVATE_MODE_ANNOTATION = "kagent.dev/private-mode";
 
 interface ValidationErrors {
   name?: string;
@@ -42,6 +45,7 @@ interface ValidationErrors {
 
 interface AgentPageContentProps {
   isEditMode: boolean;
+  isViewMode: boolean;
   agentName: string | null;
   agentNamespace: string | null;
 }
@@ -60,7 +64,7 @@ const DEFAULT_SYSTEM_PROMPT = `You're a helpful agent, made by the kagent team.
     - If you created any artifacts such as files or resources, you will include those in your response as well`
 
 // Inner component that uses useSearchParams, wrapped in Suspense
-function AgentPageContent({ isEditMode, agentName, agentNamespace }: AgentPageContentProps) {
+function AgentPageContent({ isEditMode, isViewMode, agentName, agentNamespace }: AgentPageContentProps) {
   const router = useRouter();
   const { models, loading, error, createNewAgent, updateAgent, getAgent, validateAgentData } = useAgents();
 
@@ -70,6 +74,7 @@ function AgentPageContent({ isEditMode, agentName, agentNamespace }: AgentPageCo
     name: string;
     namespace: string;
     description: string;
+    privateMode: boolean;
     agentType: AgentType;
     systemPrompt: string;
     selectedModel: SelectedModelType | null;
@@ -96,6 +101,7 @@ function AgentPageContent({ isEditMode, agentName, agentNamespace }: AgentPageCo
     name: "",
     namespace: ALLOWED_NAMESPACE || "default",
     description: "",
+    privateMode: true,
     agentType: "Declarative",
     systemPrompt: isEditMode ? "" : DEFAULT_SYSTEM_PROMPT,
     selectedModel: null,
@@ -117,6 +123,8 @@ function AgentPageContent({ isEditMode, agentName, agentNamespace }: AgentPageCo
     isLoading: isEditMode,
     errors: {},
   });
+
+  const isFormDisabled = state.isSubmitting || state.isLoading || isViewMode;
 
   // Fetch existing agent data if in edit mode
   useEffect(() => {
@@ -146,6 +154,7 @@ function AgentPageContent({ isEditMode, agentName, agentNamespace }: AgentPageCo
                 name: agent.metadata.name || "",
                 namespace: agent.metadata.namespace || "",
                 description: agent.spec?.description || "",
+                privateMode: agentResponse.private_mode ?? (agent.metadata.annotations?.[PRIVATE_MODE_ANNOTATION] === "true"),
                 agentType: agent.spec.type,
               };
               // v1alpha2: read type and split specs
@@ -319,6 +328,10 @@ function AgentPageContent({ isEditMode, agentName, agentNamespace }: AgentPageCo
   };
 
   const handleSaveAgent = async () => {
+    if (isViewMode) {
+      return;
+    }
+
     if (!validateForm()) {
       return;
     }
@@ -336,6 +349,7 @@ function AgentPageContent({ isEditMode, agentName, agentNamespace }: AgentPageCo
         name: state.name,
         namespace: state.namespace,
         description: state.description,
+        privateMode: state.privateMode,
         type: state.agentType,
         systemPrompt: state.systemPrompt,
         modelName: state.selectedModel?.ref || "",
@@ -417,9 +431,9 @@ function AgentPageContent({ isEditMode, agentName, agentNamespace }: AgentPageCo
     return (
       <div className="min-h-screen p-8">
         <div className="max-w-6xl mx-auto">
-          <h1 className="text-2xl font-bold mb-8">{isEditMode ? "Edit Agent" : "Create New Agent"}</h1>
+          <h1 className="text-2xl font-bold mb-8">{isViewMode ? "View Agent" : (isEditMode ? "Edit Agent" : "Create New Agent")}</h1>
 
-          <div className="space-y-6">
+          <fieldset disabled={isFormDisabled} className="space-y-6 min-w-0 border-0 p-0 m-0">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-xl font-bold">
@@ -496,6 +510,25 @@ function AgentPageContent({ isEditMode, agentName, agentNamespace }: AgentPageCo
                     disabled={state.isSubmitting || state.isLoading}
                   />
                   {state.errors.description && <p className="text-red-500 text-sm mt-1">{state.errors.description}</p>}
+                </div>
+              
+                <Label className="text-base mb-2 block font-bold">Agent Visibility</Label>
+                <div className="flex items-center justify-between rounded-md border p-4">
+                  <div className="space-y-1">
+                    <Label htmlFor="private-mode-toggle" className="text-sm font-medium">Private or Public</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Private agents are visible only to their owner. Public agents can be viewed by all users.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-muted-foreground">{state.privateMode ? "Private" : "Public"}</span>
+                    <Switch
+                      id="private-mode-toggle"
+                      checked={state.privateMode}
+                      onCheckedChange={(checked) => setState(prev => ({ ...prev, privateMode: !!checked }))}
+                      disabled={state.isSubmitting || state.isLoading}
+                    />
+                  </div>
                 </div>
 
                 {state.agentType === "Declarative" && (
@@ -852,21 +885,23 @@ function AgentPageContent({ isEditMode, agentName, agentNamespace }: AgentPageCo
                 </Card>
               </>
             )}
-            <div className="flex justify-end">
-              <Button className="bg-violet-500 hover:bg-violet-600" onClick={handleSaveAgent} disabled={state.isSubmitting || state.isLoading}>
-                {state.isSubmitting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    {isEditMode ? "Updating..." : "Creating..."}
-                  </>
-                ) : isEditMode ? (
-                  "Update Agent"
-                ) : (
-                  "Create Agent"
-                )}
-              </Button>
-            </div>
-          </div>
+            {!isViewMode && (
+              <div className="flex justify-end">
+                <Button className="bg-violet-500 hover:bg-violet-600" onClick={handleSaveAgent} disabled={state.isSubmitting || state.isLoading}>
+                  {state.isSubmitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      {isEditMode ? "Updating..." : "Creating..."}
+                    </>
+                  ) : isEditMode ? (
+                    "Update Agent"
+                  ) : (
+                    "Create Agent"
+                  )}
+                </Button>
+              </div>
+            )}
+          </fieldset>
         </div>
       </div>
     );
@@ -885,6 +920,7 @@ export default function AgentPage() {
   // Determine if in edit mode
   const searchParams = useSearchParams();
   const isEditMode = searchParams.get("edit") === "true";
+  const isViewMode = searchParams.get("readonly") === "true";
   const agentName = searchParams.get("name");
   const agentNamespace = searchParams.get("namespace");
 
@@ -893,7 +929,7 @@ export default function AgentPage() {
 
   return (
     <Suspense fallback={<LoadingState />}>
-      <AgentPageContent key={formKey} isEditMode={isEditMode} agentName={agentName} agentNamespace={agentNamespace} />
+      <AgentPageContent key={formKey} isEditMode={isEditMode} isViewMode={isViewMode} agentName={agentName} agentNamespace={agentNamespace} />
     </Suspense>
   );
 }
