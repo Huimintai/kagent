@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/hashicorp/go-multierror"
@@ -829,10 +830,26 @@ func (a *kagentReconciler) deleteObjects(ctx context.Context, objects map[types.
 
 func (a *kagentReconciler) upsertAgent(ctx context.Context, agent *v1alpha2.Agent, agentOutputs *agent_translator.AgentOutputs) error {
 	id := utils.ConvertToPythonIdentifier(utils.GetObjectRef(agent))
+	userID := utils.DefaultAgentUserID
+	privateMode := false
+	if annotations := agent.GetAnnotations(); annotations != nil {
+		if rawUserID := strings.TrimSpace(annotations[utils.AgentUserIDAnnotation]); rawUserID != "" {
+			userID = rawUserID
+		}
+
+		if rawPrivateMode, ok := annotations[utils.AgentPrivateModeAnnotation]; ok {
+			if parsedPrivateMode, err := strconv.ParseBool(rawPrivateMode); err == nil {
+				privateMode = parsedPrivateMode
+			}
+		}
+	}
+
 	dbAgent := &database.Agent{
-		ID:     id,
-		Type:   string(agent.Spec.Type),
-		Config: agentOutputs.Config,
+		ID:          id,
+		UserID:      userID,
+		PrivateMode: privateMode,
+		Type:        string(agent.Spec.Type),
+		Config:      agentOutputs.Config,
 	}
 
 	if err := a.dbClient.StoreAgent(ctx, dbAgent); err != nil {

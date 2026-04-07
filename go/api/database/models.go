@@ -13,10 +13,12 @@ import (
 
 // Agent represents an agent configuration
 type Agent struct {
-	ID        string         `gorm:"primaryKey" json:"id"`
-	CreatedAt time.Time      `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
-	DeletedAt gorm.DeletedAt `gorm:"index" json:"deleted_at"`
+	ID          string         `gorm:"primaryKey" json:"id"`
+	CreatedAt   time.Time      `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt   time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
+	DeletedAt   gorm.DeletedAt `gorm:"index" json:"deleted_at"`
+	UserID      string         `gorm:"type:text;not null;default:admin@kagent.dev;index" json:"user_id"`
+	PrivateMode bool           `gorm:"not null;default:false" json:"private_mode"`
 
 	Type string `gorm:"not null" json:"type"`
 	// Config is optional and may be nil for some agent types.
