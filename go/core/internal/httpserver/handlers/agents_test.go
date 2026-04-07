@@ -375,6 +375,8 @@ func TestHandleUpdateAgent(t *testing.T) {
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		require.NoError(t, err)
 		require.Equal(t, "new-model-config", response.Data.Spec.Declarative.ModelConfig)
+		require.Equal(t, "test-user", response.Data.Annotations[common.AgentUserIDAnnotation])
+		require.Equal(t, "true", response.Data.Annotations[common.AgentPrivateModeAnnotation])
 	})
 
 	t.Run("returns 404 for non-existent team", func(t *testing.T) {
@@ -394,6 +396,53 @@ func TestHandleUpdateAgent(t *testing.T) {
 		handler.HandleUpdateAgent(&testErrorResponseWriter{w}, req)
 
 		require.Equal(t, http.StatusNotFound, w.Code)
+	})
+
+	t.Run("updates private-mode annotation when explicitly false", func(t *testing.T) {
+		existingAgent := &v1alpha2.Agent{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-team", Namespace: "default"},
+			Spec: v1alpha2.AgentSpec{
+				Type: v1alpha2.AgentType_Declarative,
+				Declarative: &v1alpha2.DeclarativeAgentSpec{
+					ModelConfig: "old-model-config",
+				},
+			},
+		}
+
+		handler, _ := setupTestHandler(existingAgent)
+
+		updatedAgent := &v1alpha2.Agent{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-team",
+				Namespace: "default",
+				Annotations: map[string]string{
+					common.AgentPrivateModeAnnotation: "false",
+				},
+			},
+			Spec: v1alpha2.AgentSpec{
+				Type: v1alpha2.AgentType_Declarative,
+				Declarative: &v1alpha2.DeclarativeAgentSpec{
+					ModelConfig: "new-model-config",
+				},
+			},
+		}
+
+		body, _ := json.Marshal(updatedAgent)
+		req := httptest.NewRequest("PUT", "/api/agents/default/test-team", bytes.NewBuffer(body))
+		req = mux.SetURLVars(req, map[string]string{"namespace": "default", "name": "test-team"})
+		req.Header.Set("Content-Type", "application/json")
+		req = setUser(req, "test-user")
+		w := httptest.NewRecorder()
+
+		handler.HandleUpdateAgent(&testErrorResponseWriter{w}, req)
+
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response api.StandardResponse[v1alpha2.Agent]
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+		require.Equal(t, "false", response.Data.Annotations[common.AgentPrivateModeAnnotation])
+		require.Equal(t, "test-user", response.Data.Annotations[common.AgentUserIDAnnotation])
 	})
 }
 
@@ -439,6 +488,8 @@ func TestHandleCreateAgent(t *testing.T) {
 		require.Equal(t, "default", response.Data.Namespace)
 		require.Equal(t, "You are an imaginary agent", response.Data.Spec.Declarative.SystemMessage)
 		require.Equal(t, "test-model-config", response.Data.Spec.Declarative.ModelConfig)
+		require.Equal(t, "test-user", response.Data.Annotations[common.AgentUserIDAnnotation])
+		require.Equal(t, "true", response.Data.Annotations[common.AgentPrivateModeAnnotation])
 	})
 }
 
@@ -475,5 +526,150 @@ func TestHandleDeleteTeam(t *testing.T) {
 		handler.HandleDeleteAgent(&testErrorResponseWriter{w}, req)
 
 		require.Equal(t, http.StatusNotFound, w.Code)
+	})
+}
+
+func TestAgentUserIsolation(t *testing.T) {
+	modelConfig := createTestModelConfig()
+
+	privateAgent := &v1alpha2.Agent{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "private-agent",
+			Namespace: "default",
+			Annotations: map[string]string{
+				common.AgentUserIDAnnotation:      "alice",
+				common.AgentPrivateModeAnnotation: "true",
+			},
+		},
+		Spec: v1alpha2.AgentSpec{
+			Type:        v1alpha2.AgentType_Declarative,
+			Declarative: &v1alpha2.DeclarativeAgentSpec{ModelConfig: modelConfig.Name},
+		},
+	}
+	publicAgent := &v1alpha2.Agent{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "public-agent",
+			Namespace: "default",
+			Annotations: map[string]string{
+				common.AgentUserIDAnnotation:      "alice",
+				common.AgentPrivateModeAnnotation: "false",
+			},
+		},
+		Spec: v1alpha2.AgentSpec{
+			Type:        v1alpha2.AgentType_Declarative,
+			Declarative: &v1alpha2.DeclarativeAgentSpec{ModelConfig: modelConfig.Name},
+		},
+	}
+	legacyAgent := &v1alpha2.Agent{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "legacy-agent",
+			Namespace: "default",
+		},
+		Spec: v1alpha2.AgentSpec{
+			Type:        v1alpha2.AgentType_Declarative,
+			Declarative: &v1alpha2.DeclarativeAgentSpec{ModelConfig: modelConfig.Name},
+		},
+	}
+
+	t.Run("list filters out private agents from other users", func(t *testing.T) {
+		handler, _ := setupTestHandler(privateAgent, publicAgent, legacyAgent, modelConfig)
+		createAgent(handler.DatabaseService, privateAgent)
+		createAgent(handler.DatabaseService, publicAgent)
+		createAgent(handler.DatabaseService, legacyAgent)
+
+		// Bob should see public + legacy, not private
+		req := httptest.NewRequest("GET", "/api/agents", nil)
+		req = setUser(req, "bob")
+		w := httptest.NewRecorder()
+		handler.HandleListAgents(&testErrorResponseWriter{w}, req)
+
+		require.Equal(t, http.StatusOK, w.Code)
+		var resp api.StandardResponse[[]api.AgentResponse]
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+
+		names := make([]string, 0, len(resp.Data))
+		for _, a := range resp.Data {
+			names = append(names, a.Agent.Name)
+		}
+		require.NotContains(t, names, "private-agent")
+		require.Contains(t, names, "public-agent")
+		require.Contains(t, names, "legacy-agent")
+	})
+
+	t.Run("list shows owner their own private agents", func(t *testing.T) {
+		handler, _ := setupTestHandler(privateAgent, publicAgent, modelConfig)
+		createAgent(handler.DatabaseService, privateAgent)
+		createAgent(handler.DatabaseService, publicAgent)
+
+		req := httptest.NewRequest("GET", "/api/agents", nil)
+		req = setUser(req, "alice")
+		w := httptest.NewRecorder()
+		handler.HandleListAgents(&testErrorResponseWriter{w}, req)
+
+		require.Equal(t, http.StatusOK, w.Code)
+		var resp api.StandardResponse[[]api.AgentResponse]
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+		require.Len(t, resp.Data, 2)
+	})
+
+	t.Run("get returns 403 for private agent of another user", func(t *testing.T) {
+		handler, _ := setupTestHandler(privateAgent, modelConfig)
+		createAgent(handler.DatabaseService, privateAgent)
+
+		req := httptest.NewRequest("GET", "/api/agents/default/private-agent", nil)
+		req = mux.SetURLVars(req, map[string]string{"namespace": "default", "name": "private-agent"})
+		req = setUser(req, "bob")
+		w := httptest.NewRecorder()
+		handler.HandleGetAgent(&testErrorResponseWriter{w}, req)
+
+		require.Equal(t, http.StatusForbidden, w.Code)
+	})
+
+	t.Run("get allows access to public agent of another user", func(t *testing.T) {
+		handler, _ := setupTestHandler(publicAgent, modelConfig)
+		createAgent(handler.DatabaseService, publicAgent)
+
+		req := httptest.NewRequest("GET", "/api/agents/default/public-agent", nil)
+		req = mux.SetURLVars(req, map[string]string{"namespace": "default", "name": "public-agent"})
+		req = setUser(req, "bob")
+		w := httptest.NewRecorder()
+		handler.HandleGetAgent(&testErrorResponseWriter{w}, req)
+
+		require.Equal(t, http.StatusOK, w.Code)
+	})
+
+	t.Run("delete returns 403 for agent owned by another user", func(t *testing.T) {
+		handler, _ := setupTestHandler(privateAgent, modelConfig)
+		createAgent(handler.DatabaseService, privateAgent)
+
+		req := httptest.NewRequest("DELETE", "/api/agents/default/private-agent", nil)
+		req = mux.SetURLVars(req, map[string]string{"namespace": "default", "name": "private-agent"})
+		req = setUser(req, "bob")
+		w := httptest.NewRecorder()
+		handler.HandleDeleteAgent(&testErrorResponseWriter{w}, req)
+
+		require.Equal(t, http.StatusForbidden, w.Code)
+	})
+
+	t.Run("update returns 403 for agent owned by another user", func(t *testing.T) {
+		handler, _ := setupTestHandler(privateAgent, modelConfig)
+		createAgent(handler.DatabaseService, privateAgent)
+
+		updatedAgent := &v1alpha2.Agent{
+			ObjectMeta: metav1.ObjectMeta{Name: "private-agent", Namespace: "default"},
+			Spec: v1alpha2.AgentSpec{
+				Type:        v1alpha2.AgentType_Declarative,
+				Declarative: &v1alpha2.DeclarativeAgentSpec{ModelConfig: modelConfig.Name, SystemMessage: "hacked"},
+			},
+		}
+		body, _ := json.Marshal(updatedAgent)
+		req := httptest.NewRequest("PUT", "/api/agents/default/private-agent", bytes.NewBuffer(body))
+		req = mux.SetURLVars(req, map[string]string{"namespace": "default", "name": "private-agent"})
+		req.Header.Set("Content-Type", "application/json")
+		req = setUser(req, "bob")
+		w := httptest.NewRecorder()
+		handler.HandleUpdateAgent(&testErrorResponseWriter{w}, req)
+
+		require.Equal(t, http.StatusForbidden, w.Code)
 	})
 }

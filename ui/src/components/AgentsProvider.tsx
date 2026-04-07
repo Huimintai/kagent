@@ -27,6 +27,7 @@ export interface AgentFormData {
   name: string;
   namespace: string;
   description: string;
+  privateMode?: boolean;
   type?: AgentType;
   // Declarative fields
   systemPrompt?: string;

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	dbpkg "github.com/kagent-dev/kagent/go/api/database"
+	"github.com/kagent-dev/kagent/go/core/internal/utils"
 	"github.com/kagent-dev/kagent/go/core/pkg/env"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -130,6 +131,10 @@ func (m *Manager) Initialize() error {
 		return fmt.Errorf("failed to migrate database: %w", err)
 	}
 
+	if err := m.runAgentVisibilityBackfill(); err != nil {
+		return fmt.Errorf("failed to run agent visibility backfill: %w", err)
+	}
+
 	if m.config.PostgresConfig.VectorEnabled {
 		if err := m.db.AutoMigrate(&dbpkg.Memory{}); err != nil {
 			return fmt.Errorf("failed to migrate memory table: %w", err)
@@ -204,4 +209,32 @@ func (m *Manager) Close() error {
 		return err
 	}
 	return sqlDB.Close()
+}
+
+// Backfill values for newly added columns to existing rows in the `agent` table
+func (m *Manager) runAgentVisibilityBackfill() error {
+	if !m.db.Migrator().HasTable("agent") {
+		return nil
+	}
+
+	if !m.db.Migrator().HasColumn(&dbpkg.Agent{}, "user_id") || !m.db.Migrator().HasColumn(&dbpkg.Agent{}, "private_mode") {
+		return nil
+	}
+
+	return m.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(
+			"UPDATE agent SET user_id = ? WHERE user_id IS NULL OR user_id = ''",
+			utils.DefaultAgentUserID,
+		).Error; err != nil {
+			return fmt.Errorf("failed to backfill agent user_id: %w", err)
+		}
+
+		if err := tx.Exec(
+			"UPDATE agent SET private_mode = FALSE WHERE private_mode IS NULL",
+		).Error; err != nil {
+			return fmt.Errorf("failed to backfill agent private_mode: %w", err)
+		}
+
+		return nil
+	})
 }

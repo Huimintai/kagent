@@ -3,10 +3,34 @@
 import { AgentSpec, BaseResponse } from "@/types";
 import { Agent, AgentResponse, Tool } from "@/types";
 import { revalidatePath } from "next/cache";
-import { fetchApi, createErrorResponse } from "./utils";
+import { fetchApi, createErrorResponse, getCurrentUserId } from "./utils";
 import { AgentFormData } from "@/components/AgentsProvider";
 import { isMcpTool } from "@/lib/toolUtils";
 import { k8sRefUtils } from "@/lib/k8sUtils";
+
+const PRIVATE_MODE_ANNOTATION = "kagent.dev/private-mode";
+const USER_ID_ANNOTATION = "kagent.dev/user-id";
+
+function getAgentPrivateMode(agentResponse: AgentResponse): boolean {
+  if (typeof agentResponse.private_mode === "boolean") {
+    return agentResponse.private_mode;
+  }
+
+  const annotationValue = agentResponse.agent.metadata.annotations?.[PRIVATE_MODE_ANNOTATION];
+  if (annotationValue === "true") {
+    return true;
+  }
+  if (annotationValue === "false") {
+    return false;
+  }
+
+  // Default to private when visibility is not explicitly set.
+  return true;
+}
+
+function getAgentOwnerId(agentResponse: AgentResponse): string {
+  return agentResponse.user_id || agentResponse.agent.metadata.annotations?.[USER_ID_ANNOTATION] || "";
+}
 
 /**
  * Converts AgentFormData to Agent format
@@ -94,6 +118,9 @@ function fromAgentFormDataToAgent(agentFormData: AgentFormData): Agent {
     metadata: {
       name: agentFormData.name,
       namespace: agentFormData.namespace || "",
+      annotations: {
+        [PRIVATE_MODE_ANNOTATION]: String(agentFormData.privateMode ?? true),
+      },
     },
     spec: {
       type,
@@ -237,9 +264,19 @@ export async function createAgent(agentConfig: AgentFormData, update: boolean = 
  */
 export async function getAgents(): Promise<BaseResponse<AgentResponse[]>> {
   try {
+    const currentUserId = await getCurrentUserId();
     const { data } = await fetchApi<BaseResponse<AgentResponse[]>>(`/agents`);
 
-    const sortedData = data?.sort((a, b) => {
+    const visibleAgents = data?.filter((agentResponse) => {
+      const isOwner = getAgentOwnerId(agentResponse) === currentUserId;
+      if (isOwner) {
+        return true;
+      }
+
+      return getAgentPrivateMode(agentResponse) === false;
+    });
+
+    const sortedData = visibleAgents?.sort((a, b) => {
       const aRef = k8sRefUtils.toRef(a.agent.metadata.namespace || "", a.agent.metadata.name);
       const bRef = k8sRefUtils.toRef(b.agent.metadata.namespace || "", b.agent.metadata.name);
       return aRef.localeCompare(bRef);

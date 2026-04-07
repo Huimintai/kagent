@@ -16,19 +16,22 @@ import { MemoriesDialog } from "@/components/MemoriesDialog";
 import KagentLogo from "@/components/kagent-logo";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Brain, MoreHorizontal, Pencil, Trash2, Shield } from "lucide-react";
+import { Brain, Eye, MoreHorizontal, Pencil, Trash2, Shield } from "lucide-react";
 import { k8sRefUtils } from "@/lib/k8sUtils";
 import { cn } from "@/lib/utils";
 import { isAgentProtected } from "@/lib/appConfig";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useUserStore } from "@/lib/userStore";
 
 interface AgentCardProps {
   agentResponse: AgentResponse;
 }
 
-export function AgentCard({ agentResponse: { agent, model, modelProvider, deploymentReady, accepted } }: AgentCardProps) {
+export function AgentCard({ agentResponse }: AgentCardProps) {
+  const { agent, model, modelProvider, deploymentReady, accepted, private_mode, user_id } = agentResponse;
   const router = useRouter();
+  const currentUserId = useUserStore((state) => state.userId);
   const [memoriesOpen, setMemoriesOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
@@ -45,7 +48,12 @@ export function AgentCard({ agentResponse: { agent, model, modelProvider, deploy
   const handleEditClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    router.push(`/agents/new?edit=true&name=${agent.metadata.name}&namespace=${agent.metadata.namespace}`);
+    if (isOwner) {
+      router.push(`/agents/new?edit=true&name=${agent.metadata.name}&namespace=${agent.metadata.namespace}`);
+      return;
+    }
+
+    router.push(`/agents/new?edit=true&readonly=true&name=${agent.metadata.name}&namespace=${agent.metadata.namespace}`);
   };
 
   const getStatusInfo = () => {
@@ -65,6 +73,11 @@ export function AgentCard({ agentResponse: { agent, model, modelProvider, deploy
   };
 
   const statusInfo = getStatusInfo();
+  const ownerId = user_id || agent.metadata.annotations?.["kagent.dev/user-id"] || "";
+  const isOwner = ownerId === currentUserId;
+  const privateMode = typeof private_mode === "boolean"
+    ? private_mode
+    : agent.metadata.annotations?.["kagent.dev/private-mode"] !== "false";
 
   const cardContent = (
     <Card className={cn(
@@ -109,8 +122,8 @@ export function AgentCard({ agentResponse: { agent, model, modelProvider, deploy
                 className={cn("cursor-pointer", protectedAgent && "opacity-50 cursor-not-allowed")}
                 disabled={protectedAgent}
               >
-                <Pencil className="mr-2 h-4 w-4" />
-                Edit
+                {isOwner ? <Pencil className="mr-2 h-4 w-4" /> : <Eye className="mr-2 h-4 w-4" />}
+                {isOwner ? "Edit" : "View"}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={(e) => {
@@ -144,11 +157,16 @@ export function AgentCard({ agentResponse: { agent, model, modelProvider, deploy
         <p className="text-sm text-muted-foreground line-clamp-3 overflow-hidden">
           {agent.spec.description}
         </p>
-        <div className="mt-4 flex items-center text-xs text-muted-foreground">
+        <div className="mt-4 flex items-center justify-between gap-2 text-xs text-muted-foreground">
           {isBYO ? (
             <span title={byoImage} className="truncate">Image: {byoImage}</span>
           ) : (
             <span className="truncate">{modelProvider} ({model})</span>
+          )}
+          {privateMode && (
+            <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-800 dark:bg-slate-700 dark:text-slate-100">
+              Private
+            </span>
           )}
         </div>
       </CardContent>

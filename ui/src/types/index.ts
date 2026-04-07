@@ -216,6 +216,7 @@ export interface ToolsResponse {
 export interface ResourceMetadata {
   name: string;
   namespace?: string;
+  annotations?: Record<string, string>;
 }
 
 export type ToolProviderType = "McpServer" | "Agent"
@@ -335,6 +336,8 @@ export interface Agent {
 export interface AgentResponse {
   id: number;
   agent: Agent;
+  user_id?: string;
+  private_mode?: boolean;
   model: string;
   modelProvider: string;
   modelConfigRef: string;

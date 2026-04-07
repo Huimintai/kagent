@@ -86,8 +86,10 @@ type UpdateModelConfigRequest struct {
 // Agent types
 
 type AgentResponse struct {
-	ID    string          `json:"id"`
-	Agent *v1alpha2.Agent `json:"agent"`
+	ID          string          `json:"id"`
+	Agent       *v1alpha2.Agent `json:"agent"`
+	UserID      string          `json:"user_id,omitempty"`
+	PrivateMode bool            `json:"private_mode"`
 	// Config         *adk.AgentConfig       `json:"config"`
 	ModelProvider   v1alpha2.ModelProvider `json:"modelProvider"`
 	Model           string                 `json:"model"`

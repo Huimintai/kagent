@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"net/http"
+	"strconv"
 
 	"github.com/go-logr/logr"
 	api "github.com/kagent-dev/kagent/go/api/httpapi"
@@ -36,6 +37,12 @@ func (h *AgentsHandler) HandleListAgents(w ErrorResponseWriter, r *http.Request)
 		return
 	}
 
+	userID, err := GetUserID(r)
+	if err != nil {
+		w.RespondWithError(errors.NewBadRequestError("Failed to get user ID", err))
+		return
+	}
+
 	agentList := &v1alpha2.AgentList{}
 	if err := h.KubeClient.List(r.Context(), agentList); err != nil {
 		w.RespondWithError(errors.NewInternalServerError("Failed to list Agents from Kubernetes", err))
@@ -44,6 +51,10 @@ func (h *AgentsHandler) HandleListAgents(w ErrorResponseWriter, r *http.Request)
 
 	agentsWithID := make([]api.AgentResponse, 0)
 	for _, agent := range agentList.Items {
+		if !hasAgentAccess(agent.GetAnnotations(), userID) {
+			continue
+		}
+
 		agentRef := utils.GetObjectRef(&agent)
 		log.V(1).Info("Processing Agent", "agentRef", agentRef)
 
@@ -62,6 +73,7 @@ func (h *AgentsHandler) HandleListAgents(w ErrorResponseWriter, r *http.Request)
 func (h *AgentsHandler) getAgentResponse(ctx context.Context, log logr.Logger, agent *v1alpha2.Agent) (api.AgentResponse, error) {
 	agentRef := utils.GetObjectRef(agent)
 	log.V(1).Info("Processing Agent", "agentRef", agentRef)
+	agentID := utils.ConvertToPythonIdentifier(agentRef)
 
 	deploymentReady := false
 	for _, condition := range agent.Status.Conditions {
@@ -81,10 +93,30 @@ func (h *AgentsHandler) getAgentResponse(ctx context.Context, log logr.Logger, a
 	}
 
 	response := api.AgentResponse{
-		ID:              utils.ConvertToPythonIdentifier(agentRef),
+		ID:              agentID,
 		Agent:           agent,
+		UserID:          utils.DefaultAgentUserID,
+		PrivateMode:     utils.DefaultAgentPrivateMode,
 		DeploymentReady: deploymentReady,
 		Accepted:        accepted,
+	}
+
+	if annotations := agent.GetAnnotations(); annotations != nil {
+		if userID, ok := annotations[utils.AgentUserIDAnnotation]; ok && userID != "" {
+			response.UserID = userID
+		}
+		if rawPrivateMode, ok := annotations[utils.AgentPrivateModeAnnotation]; ok {
+			if parsedPrivateMode, err := strconv.ParseBool(rawPrivateMode); err == nil {
+				response.PrivateMode = parsedPrivateMode
+			}
+		}
+	}
+
+	if dbAgent, err := h.DatabaseService.GetAgent(ctx, agentID); err == nil && dbAgent != nil {
+		response.UserID = dbAgent.UserID
+		response.PrivateMode = dbAgent.PrivateMode
+	} else if err != nil {
+		log.V(1).Info("Agent not found in database; using metadata/default access state", "agentID", agentID, "error", err.Error())
 	}
 
 	if agent.Spec.Type == v1alpha2.AgentType_Declarative {
@@ -137,6 +169,13 @@ func (h *AgentsHandler) HandleGetAgent(w ErrorResponseWriter, r *http.Request) {
 		w.RespondWithError(err)
 		return
 	}
+
+	userID, err := GetUserID(r)
+	if err != nil {
+		w.RespondWithError(errors.NewBadRequestError("Failed to get user ID", err))
+		return
+	}
+
 	agent := &v1alpha2.Agent{}
 	if err := h.KubeClient.Get(
 		r.Context(),
@@ -147,6 +186,11 @@ func (h *AgentsHandler) HandleGetAgent(w ErrorResponseWriter, r *http.Request) {
 		agent,
 	); err != nil {
 		w.RespondWithError(errors.NewNotFoundError("Agent not found", err))
+		return
+	}
+
+	if !hasAgentAccess(agent.GetAnnotations(), userID) {
+		w.RespondWithError(errors.NewForbiddenError("Not authorized to access this agent", nil))
 		return
 	}
 
@@ -189,6 +233,14 @@ func (h *AgentsHandler) HandleCreateAgent(w ErrorResponseWriter, r *http.Request
 		w.RespondWithError(err)
 		return
 	}
+
+	userID, err := GetUserID(r)
+	if err != nil {
+		w.RespondWithError(errors.NewBadRequestError("Failed to get user ID", err))
+		return
+	}
+
+	setAgentAccessMetadata(&agentReq, agentReq.GetAnnotations(), userID)
 
 	kubeClientWrapper := utils.NewKubeClientWrapper(h.KubeClient)
 	if err := kubeClientWrapper.AddInMemory(&agentReq); err != nil {
@@ -252,6 +304,12 @@ func (h *AgentsHandler) HandleUpdateAgent(w ErrorResponseWriter, r *http.Request
 		return
 	}
 
+	userID, err := GetUserID(r)
+	if err != nil {
+		w.RespondWithError(errors.NewBadRequestError("Failed to get user ID", err))
+		return
+	}
+
 	log.V(1).Info("Getting existing Agent")
 	existingAgent := &v1alpha2.Agent{}
 	err = h.KubeClient.Get(
@@ -270,9 +328,18 @@ func (h *AgentsHandler) HandleUpdateAgent(w ErrorResponseWriter, r *http.Request
 		return
 	}
 
+	if ann := existingAgent.GetAnnotations(); ann != nil {
+		ownerID := ann[utils.AgentUserIDAnnotation]
+		if ownerID != "" && ownerID != userID {
+			w.RespondWithError(errors.NewForbiddenError("Not authorized to update this agent", nil))
+			return
+		}
+	}
+
 	// We set the .spec from the incoming request, so
 	// we don't have to copy/set any other fields
 	existingAgent.Spec = agentReq.Spec
+	setAgentAccessMetadata(existingAgent, agentReq.GetAnnotations(), userID)
 
 	if err := h.KubeClient.Update(r.Context(), existingAgent); err != nil {
 		w.RespondWithError(errors.NewInternalServerError("Failed to update Agent", err))
@@ -306,6 +373,12 @@ func (h *AgentsHandler) HandleDeleteAgent(w ErrorResponseWriter, r *http.Request
 		return
 	}
 
+	userID, err := GetUserID(r)
+	if err != nil {
+		w.RespondWithError(errors.NewBadRequestError("Failed to get user ID", err))
+		return
+	}
+
 	log = log.WithValues("agentNamespace", agentNamespace)
 
 	log.V(1).Info("Getting Agent from Kubernetes")
@@ -329,6 +402,14 @@ func (h *AgentsHandler) HandleDeleteAgent(w ErrorResponseWriter, r *http.Request
 		return
 	}
 
+	if ann := agent.GetAnnotations(); ann != nil {
+		ownerID := ann[utils.AgentUserIDAnnotation]
+		if ownerID != "" && ownerID != userID {
+			w.RespondWithError(errors.NewForbiddenError("Not authorized to delete this agent", nil))
+			return
+		}
+	}
+
 	log.V(1).Info("Deleting Agent from Kubernetes")
 	if err := h.KubeClient.Delete(r.Context(), agent); err != nil {
 		w.RespondWithError(errors.NewInternalServerError("Failed to delete Agent", err))
@@ -338,4 +419,36 @@ func (h *AgentsHandler) HandleDeleteAgent(w ErrorResponseWriter, r *http.Request
 	log.Info("Successfully deleted agent")
 	data := api.NewResponse(struct{}{}, "Successfully deleted agent", false)
 	RespondWithJSON(w, http.StatusOK, data)
+}
+
+// hasAccess returns true if the given userID has access to the resource described by its annotations.
+// Legacy resources without annotations are considered accessible by all users.
+func hasAgentAccess(annotations map[string]string, userID string) bool {
+	if annotations == nil {
+		return true
+	}
+	ownerID := annotations[utils.AgentUserIDAnnotation]
+	if ownerID == "" || ownerID == userID {
+		return true
+	}
+	privateMode := annotations[utils.AgentPrivateModeAnnotation]
+	return privateMode == "false"
+}
+
+func setAgentAccessMetadata(agent *v1alpha2.Agent, sourceAnnotations map[string]string, userID string) {
+	privateMode := utils.DefaultAgentPrivateMode
+	if rawPrivateMode, ok := sourceAnnotations[utils.AgentPrivateModeAnnotation]; ok {
+		if parsedPrivateMode, err := strconv.ParseBool(rawPrivateMode); err == nil {
+			privateMode = parsedPrivateMode
+		}
+	}
+
+	annotations := agent.GetAnnotations()
+	if annotations == nil {
+		annotations = make(map[string]string)
+	}
+
+	annotations[utils.AgentUserIDAnnotation] = userID
+	annotations[utils.AgentPrivateModeAnnotation] = strconv.FormatBool(privateMode)
+	agent.SetAnnotations(annotations)
 }
