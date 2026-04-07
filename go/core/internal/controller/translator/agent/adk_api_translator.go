@@ -471,7 +471,11 @@ func (a *adkApiTranslator) buildManifest(
 		sharedEnv = append(sharedEnv, skillsEnv)
 
 		insecure := agent.Spec.Skills != nil && agent.Spec.Skills.InsecureSkipVerify
-		container, skillsVolumes, err := buildSkillsInitContainer(gitRefs, gitAuthSecretRef, skills, insecure, dep.SecurityContext)
+		var ociAuthSecretRef *corev1.LocalObjectReference
+		if agent.Spec.Skills != nil {
+			ociAuthSecretRef = agent.Spec.Skills.OCIAuthSecretRef
+		}
+		container, skillsVolumes, err := buildSkillsInitContainer(gitRefs, gitAuthSecretRef, skills, insecure, ociAuthSecretRef, dep.SecurityContext)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build skills init container: %w", err)
 		}
@@ -1795,11 +1799,13 @@ func prepareSkillsInitData(
 // buildSkillsInitContainer creates the unified init container and associated volumes
 // for fetching skills from both Git repositories and OCI registries.
 // If authSecretRef is non-nil a single Secret volume is created and mounted at /git-auth.
+// If ociAuthSecretRef is non-nil a Secret volume is mounted at /oci-auth and DOCKER_CONFIG is set.
 func buildSkillsInitContainer(
 	gitRefs []v1alpha2.GitRepo,
 	authSecretRef *corev1.LocalObjectReference,
 	ociRefs []string,
 	insecureOCI bool,
+	ociAuthSecretRef *corev1.LocalObjectReference,
 	securityContext *corev1.SecurityContext,
 ) (container corev1.Container, volumes []corev1.Volume, err error) {
 	data, err := prepareSkillsInitData(gitRefs, authSecretRef, ociRefs, insecureOCI)
@@ -1837,11 +1843,40 @@ func buildSkillsInitContainer(
 		})
 	}
 
+	// Mount OCI registry auth secret if provided.
+	// The secret is expected to be of type kubernetes.io/dockerconfigjson.
+	// We remap the key .dockerconfigjson → config.json so that krane
+	// (go-containerregistry) finds it at $DOCKER_CONFIG/config.json.
+	var envVars []corev1.EnvVar
+	if ociAuthSecretRef != nil {
+		volumes = append(volumes, corev1.Volume{
+			Name: "oci-auth",
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: ociAuthSecretRef.Name,
+					Items: []corev1.KeyToPath{
+						{Key: ".dockerconfigjson", Path: "config.json"},
+					},
+				},
+			},
+		})
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      "oci-auth",
+			MountPath: "/oci-auth",
+			ReadOnly:  true,
+		})
+		envVars = append(envVars, corev1.EnvVar{
+			Name:  "DOCKER_CONFIG",
+			Value: "/oci-auth",
+		})
+	}
+
 	container = corev1.Container{
 		Name:            "skills-init",
 		Image:           DefaultSkillsInitImageConfig.Image(),
 		Command:         []string{"/bin/sh", "-c", script},
 		VolumeMounts:    volumeMounts,
+		Env:             envVars,
 		SecurityContext: initSecCtx,
 	}
 
