@@ -475,6 +475,11 @@ func (a *adkApiTranslator) buildManifest(
 		if agent.Spec.Skills != nil {
 			ociAuthSecretRef = agent.Spec.Skills.OCIAuthSecretRef
 		}
+		if ociAuthSecretRef == nil {
+			if defaultSecret := env.KagentDefaultOCIAuthSecret.Get(); defaultSecret != "" {
+				ociAuthSecretRef = &corev1.LocalObjectReference{Name: defaultSecret}
+			}
+		}
 		container, skillsVolumes, err := buildSkillsInitContainer(gitRefs, gitAuthSecretRef, skills, insecure, ociAuthSecretRef, dep.SecurityContext)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build skills init container: %w", err)
