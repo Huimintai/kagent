@@ -33,7 +33,6 @@ export interface AgentFormData {
   category?: string;
   // Classification labels
   toolType?: string;
-  role?: string;
   // Declarative fields
   systemPrompt?: string;
   modelName?: string;

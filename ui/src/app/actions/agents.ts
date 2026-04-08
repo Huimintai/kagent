@@ -7,7 +7,7 @@ import { fetchApi, createErrorResponse, getCurrentUserId } from "./utils";
 import { AgentFormData } from "@/components/AgentsProvider";
 import { isMcpTool } from "@/lib/toolUtils";
 import { k8sRefUtils } from "@/lib/k8sUtils";
-import { LABEL_CATEGORY, LABEL_TOOL_TYPE, LABEL_ROLE } from "@/lib/constants";
+import { LABEL_CATEGORY, LABEL_TOOL_TYPE } from "@/lib/constants";
 
 const PRIVATE_MODE_ANNOTATION = "kagent.dev/private-mode";
 const USER_ID_ANNOTATION = "kagent.dev/user-id";
@@ -141,9 +141,6 @@ function fromAgentFormDataToAgent(agentFormData: AgentFormData): Agent {
   }
   if (computedToolType) {
     labels[LABEL_TOOL_TYPE] = computedToolType;
-  }
-  if (agentFormData.role) {
-    labels[LABEL_ROLE] = agentFormData.role;
   }
 
   const base: Partial<Agent> = {

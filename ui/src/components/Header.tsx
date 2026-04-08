@@ -91,15 +91,15 @@ export function Header() {
                     </Link>
                   )}
                 </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href="/servers" className="gap-2 cursor-pointer w-full">
-                    <Server className="h-4 w-4" />
+                <DropdownMenuItem disabled>
+                  <span className="gap-2 w-full flex items-center">
+                    <Ban className="h-4 w-4" />
                     New MCP Server
-                  </Link>
+                  </span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            
+
             {/* View Dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -239,15 +239,14 @@ export function Header() {
                       </Link>
                     )}
                   </DropdownMenuItem>
-                  <DropdownMenuItem asChild onClick={handleMobileLinkClick}>
-                    <Link href="/servers/new" className="gap-2 cursor-pointer w-full">
-                      <Server className="h-4 w-4" />
+                  <DropdownMenuItem disabled>
+                    <span className="gap-2 w-full flex items-center">
+                      <Ban className="h-4 w-4" />
                       New MCP Server
-                    </Link>
+                    </span>
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              
 
               <div className="flex items-center justify-end gap-2 py-2">
                 <ThemeToggle />
