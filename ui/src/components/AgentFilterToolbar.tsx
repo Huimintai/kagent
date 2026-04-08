@@ -51,7 +51,6 @@ export function AgentFilterToolbar({
         <Tabs value={privacyFilter} onValueChange={(v) => onPrivacyFilterChange(v as PrivacyFilter)}>
           <TabsList>
             <TabsTrigger value="all">All</TabsTrigger>
-            <TabsTrigger value="public">Public</TabsTrigger>
             <TabsTrigger value="my">My</TabsTrigger>
           </TabsList>
         </Tabs>

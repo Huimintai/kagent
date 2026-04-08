@@ -12,4 +12,4 @@ export const ROLE_OPTIONS = [
   { value: "sub-agent", label: "Sub Agent" },
 ] as const;
 
-export type PrivacyFilter = "all" | "public" | "my";
+export type PrivacyFilter = "all" | "my";

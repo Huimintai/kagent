@@ -111,9 +111,7 @@ export default function AgentList() {
           : a.agent.metadata.annotations?.["kagent.dev/private-mode"] !== "false";
 
       let matchesPrivacy = true;
-      if (privacyFilter === "public") {
-        matchesPrivacy = !isPrivate;
-      } else if (privacyFilter === "my") {
+      if (privacyFilter === "my") {
         matchesPrivacy = isOwner;
       }
 
