@@ -13,6 +13,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { getServers } from "../actions/servers";
 import Link from "next/link";
 import CategoryFilter from "@/components/tools/CategoryFilter";
+import { ALLOWED_NAMESPACE } from "@/lib/appConfig";
 
 export default function ToolsPage() {
   const [toolsData, setToolsData] = useState<{
@@ -49,11 +50,16 @@ export default function ToolsPage() {
       }
       
       const tools = serversResponse.data;
-      
+
+      // Filter by allowed namespace if configured
+      const namespacedTools = ALLOWED_NAMESPACE
+        ? tools.filter((s) => s.ref?.startsWith(ALLOWED_NAMESPACE + "/"))
+        : tools;
+
       // Extract unique categories and initialize expanded state
       const uniqueCategories = new Set<string>();
       const initialExpandedState: { [key: string]: boolean } = {};
-      tools.forEach(server => {
+      namespacedTools.forEach(server => {
         server.discoveredTools.forEach(tool => {
           const category = getDiscoveredToolCategory(tool, server.ref);
           uniqueCategories.add(category);
@@ -63,7 +69,7 @@ export default function ToolsPage() {
 
       // Update state with tools data
       setToolsData({
-        tools,
+        tools: namespacedTools,
         categories: uniqueCategories,
         isLoading: false,
         error: null
