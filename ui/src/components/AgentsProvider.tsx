@@ -29,6 +29,10 @@ export interface AgentFormData {
   description: string;
   privateMode?: boolean;
   type?: AgentType;
+  // Category label
+  category?: string;
+  // Classification labels
+  toolType?: string;
   // Declarative fields
   systemPrompt?: string;
   modelName?: string;
