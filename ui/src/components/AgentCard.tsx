@@ -17,12 +17,12 @@ import KagentLogo from "@/components/kagent-logo";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Brain, Eye, MoreHorizontal, Pencil, Trash2, Shield } from "lucide-react";
-import { k8sRefUtils } from "@/lib/k8sUtils";
 import { cn } from "@/lib/utils";
-import { isAgentProtected } from "@/lib/appConfig";
+import { isEffectivelyProtected } from "@/lib/appConfig";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useUserStore } from "@/lib/userStore";
+import { LABEL_TOOL_TYPE, LABEL_ROLE, LABEL_CATEGORY } from "@/lib/constants";
 
 interface AgentCardProps {
   agentResponse: AgentResponse;
@@ -35,15 +35,21 @@ export function AgentCard({ agentResponse }: AgentCardProps) {
   const [memoriesOpen, setMemoriesOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  const agentRef = k8sRefUtils.toRef(
-    agent.metadata.namespace || '',
-    agent.metadata.name || ''
-  );
-
   const isBYO = agent.spec?.type === "BYO";
   const byoImage = isBYO ? agent.spec?.byo?.deployment?.image : undefined;
   const isReady = deploymentReady && accepted;
-  const protectedAgent = isAgentProtected(agent.metadata.name || "");
+
+  const ownerId = user_id || agent.metadata.annotations?.["kagent.dev/user-id"] || "";
+  const isOwner = ownerId === currentUserId;
+  const privateMode = typeof private_mode === "boolean"
+    ? private_mode
+    : agent.metadata.annotations?.["kagent.dev/private-mode"] !== "false";
+  const protectedAgent = isEffectivelyProtected(agent.metadata.name || "", isOwner);
+
+  const category = agent.metadata.labels?.[LABEL_CATEGORY];
+  const toolType = agent.metadata.labels?.[LABEL_TOOL_TYPE];
+  const role = agent.metadata.labels?.[LABEL_ROLE];
+  const hasBadges = !!(toolType || role || category);
 
   const handleEditClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -73,11 +79,6 @@ export function AgentCard({ agentResponse }: AgentCardProps) {
   };
 
   const statusInfo = getStatusInfo();
-  const ownerId = user_id || agent.metadata.annotations?.["kagent.dev/user-id"] || "";
-  const isOwner = ownerId === currentUserId;
-  const privateMode = typeof private_mode === "boolean"
-    ? private_mode
-    : agent.metadata.annotations?.["kagent.dev/private-mode"] !== "false";
 
   const cardContent = (
     <Card className={cn(
@@ -89,14 +90,11 @@ export function AgentCard({ agentResponse }: AgentCardProps) {
       <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2 relative z-30">
         <CardTitle className="flex items-center gap-2 flex-1 min-w-0">
           <KagentLogo className="h-5 w-5 flex-shrink-0" />
-          <span className="truncate">{agentRef}</span>
+          <span className="truncate">{agent.metadata.name}</span>
           {protectedAgent && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <Badge variant="secondary" className="flex-shrink-0 gap-1 text-xs">
-                  <Shield className="h-3 w-3" />
-                  Protected
-                </Badge>
+                <Shield className="h-3 w-3 flex-shrink-0 text-muted-foreground" />
               </TooltipTrigger>
               <TooltipContent>
                 This agent is protected and cannot be edited or deleted.
@@ -118,9 +116,8 @@ export function AgentCard({ agentResponse }: AgentCardProps) {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
               <DropdownMenuItem
-                onClick={protectedAgent ? undefined : handleEditClick}
-                className={cn("cursor-pointer", protectedAgent && "opacity-50 cursor-not-allowed")}
-                disabled={protectedAgent}
+                onClick={handleEditClick}
+                className="cursor-pointer"
               >
                 {isOwner ? <Pencil className="mr-2 h-4 w-4" /> : <Eye className="mr-2 h-4 w-4" />}
                 {isOwner ? "Edit" : "View"}
@@ -154,7 +151,14 @@ export function AgentCard({ agentResponse }: AgentCardProps) {
         </div>
       </CardHeader>
       <CardContent className="flex flex-col justify-between h-32 relative z-10">
-        <p className="text-sm text-muted-foreground line-clamp-3 overflow-hidden">
+        {hasBadges && (
+          <div className="flex flex-wrap gap-1 mb-1">
+            {toolType && <Badge variant="outline" className="text-[10px] capitalize">{toolType}</Badge>}
+            {role && <Badge variant="outline" className="text-[10px] capitalize">{role}</Badge>}
+            {category && <Badge variant="outline" className="text-[10px] capitalize">{category}</Badge>}
+          </div>
+        )}
+        <p className={cn("text-sm text-muted-foreground overflow-hidden", hasBadges ? "line-clamp-2" : "line-clamp-3")}>
           {agent.spec.description}
         </p>
         <div className="mt-4 flex items-center justify-between gap-2 text-xs text-muted-foreground">

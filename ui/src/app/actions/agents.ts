@@ -7,6 +7,7 @@ import { fetchApi, createErrorResponse, getCurrentUserId } from "./utils";
 import { AgentFormData } from "@/components/AgentsProvider";
 import { isMcpTool } from "@/lib/toolUtils";
 import { k8sRefUtils } from "@/lib/k8sUtils";
+import { LABEL_CATEGORY, LABEL_TOOL_TYPE, LABEL_ROLE } from "@/lib/constants";
 
 const PRIVATE_MODE_ANNOTATION = "kagent.dev/private-mode";
 const USER_ID_ANNOTATION = "kagent.dev/user-id";
@@ -24,7 +25,15 @@ function getAgentPrivateMode(agentResponse: AgentResponse): boolean {
     return false;
   }
 
-  // Default to private when visibility is not explicitly set.
+  // No explicit visibility set. Agents created via kubectl/helm typically have
+  // neither private_mode nor user_id — treat them as public so they are visible
+  // to everyone. Agents created through the UI always have both annotations.
+  const hasOwner = !!(agentResponse.user_id || agentResponse.agent.metadata.annotations?.[USER_ID_ANNOTATION]);
+  if (!hasOwner) {
+    return false;
+  }
+
+  // Has an owner but no explicit visibility — default to private.
   return true;
 }
 
@@ -114,6 +123,29 @@ function fromAgentFormDataToAgent(agentFormData: AgentFormData): Agent {
       return tool as Tool;
     });
 
+  // Auto-detect tool type from the agent's tools and skills
+  const hasMcp = (agentFormData.tools || []).some((t) => isMcpTool(t));
+  const hasSkill = !!(agentFormData.skillRefs && agentFormData.skillRefs.length > 0);
+  let computedToolType = "";
+  if (hasMcp && hasSkill) {
+    computedToolType = "mcp+skill";
+  } else if (hasMcp) {
+    computedToolType = "mcp";
+  } else if (hasSkill) {
+    computedToolType = "skill";
+  }
+
+  const labels: Record<string, string> = {};
+  if (agentFormData.category) {
+    labels[LABEL_CATEGORY] = agentFormData.category;
+  }
+  if (computedToolType) {
+    labels[LABEL_TOOL_TYPE] = computedToolType;
+  }
+  if (agentFormData.role) {
+    labels[LABEL_ROLE] = agentFormData.role;
+  }
+
   const base: Partial<Agent> = {
     metadata: {
       name: agentFormData.name,
@@ -121,6 +153,7 @@ function fromAgentFormDataToAgent(agentFormData: AgentFormData): Agent {
       annotations: {
         [PRIVATE_MODE_ANNOTATION]: String(agentFormData.privateMode ?? true),
       },
+      ...(Object.keys(labels).length > 0 && { labels }),
     },
     spec: {
       type,
@@ -233,6 +266,13 @@ export async function createAgent(agentConfig: AgentFormData, update: boolean = 
     }
 
     const agentPayload = fromAgentFormDataToAgent(agentConfig);
+
+    // Ensure user-id annotation is set so the agent is visible to its creator
+    const userId = await getCurrentUserId();
+    if (agentPayload.metadata?.annotations) {
+      agentPayload.metadata.annotations[USER_ID_ANNOTATION] = userId;
+    }
+
     const response = await fetchApi<BaseResponse<Agent>>(`/agents`, {
       method: update ? "PUT" : "POST",
       headers: {

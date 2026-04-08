@@ -20,11 +20,13 @@ import { AgentFormData } from "@/components/AgentsProvider";
 import { Tool, EnvVar } from "@/types";
 import { toast } from "sonner";
 import { NamespaceCombobox } from "@/components/NamespaceCombobox";
+import { CategoryCombobox } from "@/components/CategoryCombobox";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { isAgentProtected, ALLOWED_NAMESPACE } from "@/lib/appConfig";
+import { LABEL_TOOL_TYPE, LABEL_ROLE, LABEL_CATEGORY, ROLE_OPTIONS } from "@/lib/constants";
 
 const PRIVATE_MODE_ANNOTATION = "kagent.dev/private-mode";
 
@@ -75,6 +77,9 @@ function AgentPageContent({ isEditMode, isViewMode, agentName, agentNamespace }:
     namespace: string;
     description: string;
     privateMode: boolean;
+    category: string;
+    toolType: string;
+    role: string;
     agentType: AgentType;
     systemPrompt: string;
     selectedModel: SelectedModelType | null;
@@ -102,6 +107,9 @@ function AgentPageContent({ isEditMode, isViewMode, agentName, agentNamespace }:
     namespace: ALLOWED_NAMESPACE || "default",
     description: "",
     privateMode: true,
+    category: "",
+    toolType: "",
+    role: "",
     agentType: "Declarative",
     systemPrompt: isEditMode ? "" : DEFAULT_SYSTEM_PROMPT,
     selectedModel: null,
@@ -156,6 +164,9 @@ function AgentPageContent({ isEditMode, isViewMode, agentName, agentNamespace }:
                 description: agent.spec?.description || "",
                 privateMode: agentResponse.private_mode ?? (agent.metadata.annotations?.[PRIVATE_MODE_ANNOTATION] === "true"),
                 agentType: agent.spec.type,
+                category: agent.metadata.labels?.[LABEL_CATEGORY] || "",
+                toolType: agent.metadata.labels?.[LABEL_TOOL_TYPE] || "",
+                role: agent.metadata.labels?.[LABEL_ROLE] || "",
               };
               // v1alpha2: read type and split specs
               if (agent.spec.type === "Declarative") {
@@ -350,6 +361,8 @@ function AgentPageContent({ isEditMode, isViewMode, agentName, agentNamespace }:
         namespace: state.namespace,
         description: state.description,
         privateMode: state.privateMode,
+        category: state.category || undefined,
+        role: state.role || undefined,
         type: state.agentType,
         systemPrompt: state.systemPrompt,
         modelName: state.selectedModel?.ref || "",
@@ -526,9 +539,49 @@ function AgentPageContent({ isEditMode, isViewMode, agentName, agentNamespace }:
                       id="private-mode-toggle"
                       checked={state.privateMode}
                       onCheckedChange={(checked) => setState(prev => ({ ...prev, privateMode: !!checked }))}
-                      disabled={state.isSubmitting || state.isLoading}
+                      disabled={state.isSubmitting || state.isLoading || !isEditMode}
                     />
                   </div>
+                </div>
+                {!isEditMode && (
+                  <p className="text-xs text-muted-foreground -mt-3">
+                    New agents always start as private. You can make them public later by editing.
+                  </p>
+                )}
+
+                <div>
+                  <label className="text-sm mb-2 block">Category (optional)</label>
+                  <p className="text-xs mb-2 block text-muted-foreground">
+                    Assign a category to group agents in the dashboard (e.g. common, network, observability, dr).
+                  </p>
+                  <CategoryCombobox
+                    value={state.category}
+                    onValueChange={(value) => setState(prev => ({ ...prev, category: value }))}
+                    disabled={state.isSubmitting || state.isLoading}
+                  />
+                </div>
+
+
+                <div>
+                  <label className="text-sm mb-2 block">Role (optional)</label>
+                  <p className="text-xs mb-2 block text-muted-foreground">
+                    Indicate whether this agent orchestrates other agents or serves as a sub-agent.
+                  </p>
+                  <Select
+                    value={state.role || undefined}
+                    onValueChange={(val) => setState(prev => ({ ...prev, role: val === "__none__" ? "" : val }))}
+                    disabled={state.isSubmitting || state.isLoading}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select role..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">None</SelectItem>
+                      {ROLE_OPTIONS.map(opt => (
+                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {state.agentType === "Declarative" && (
