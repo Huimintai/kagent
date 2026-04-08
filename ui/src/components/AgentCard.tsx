@@ -22,7 +22,7 @@ import { isEffectivelyProtected } from "@/lib/appConfig";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useUserStore } from "@/lib/userStore";
-import { LABEL_TOOL_TYPE, LABEL_ROLE, LABEL_CATEGORY } from "@/lib/constants";
+import { LABEL_TOOL_TYPE, LABEL_CATEGORY } from "@/lib/constants";
 
 interface AgentCardProps {
   agentResponse: AgentResponse;
@@ -48,8 +48,7 @@ export function AgentCard({ agentResponse }: AgentCardProps) {
 
   const category = agent.metadata.labels?.[LABEL_CATEGORY];
   const toolType = agent.metadata.labels?.[LABEL_TOOL_TYPE];
-  const role = agent.metadata.labels?.[LABEL_ROLE];
-  const hasBadges = !!(toolType || role || category);
+  const hasBadges = !!(toolType || category);
 
   const handleEditClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -154,7 +153,6 @@ export function AgentCard({ agentResponse }: AgentCardProps) {
         {hasBadges && (
           <div className="flex flex-wrap gap-1 mb-1">
             {toolType && <Badge variant="outline" className="text-[10px] capitalize">{toolType}</Badge>}
-            {role && <Badge variant="outline" className="text-[10px] capitalize">{role}</Badge>}
             {category && <Badge variant="outline" className="text-[10px] capitalize">{category}</Badge>}
           </div>
         )}
