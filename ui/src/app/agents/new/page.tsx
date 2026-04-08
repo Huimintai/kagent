@@ -26,7 +26,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { isAgentProtected, ALLOWED_NAMESPACE } from "@/lib/appConfig";
-import { LABEL_TOOL_TYPE, LABEL_ROLE, LABEL_CATEGORY, ROLE_OPTIONS } from "@/lib/constants";
+import { LABEL_TOOL_TYPE, LABEL_CATEGORY } from "@/lib/constants";
 
 const PRIVATE_MODE_ANNOTATION = "kagent.dev/private-mode";
 
@@ -79,7 +79,6 @@ function AgentPageContent({ isEditMode, isViewMode, agentName, agentNamespace }:
     privateMode: boolean;
     category: string;
     toolType: string;
-    role: string;
     agentType: AgentType;
     systemPrompt: string;
     selectedModel: SelectedModelType | null;
@@ -109,7 +108,6 @@ function AgentPageContent({ isEditMode, isViewMode, agentName, agentNamespace }:
     privateMode: true,
     category: "",
     toolType: "",
-    role: "",
     agentType: "Declarative",
     systemPrompt: isEditMode ? "" : DEFAULT_SYSTEM_PROMPT,
     selectedModel: null,
@@ -166,7 +164,6 @@ function AgentPageContent({ isEditMode, isViewMode, agentName, agentNamespace }:
                 agentType: agent.spec.type,
                 category: agent.metadata.labels?.[LABEL_CATEGORY] || "",
                 toolType: agent.metadata.labels?.[LABEL_TOOL_TYPE] || "",
-                role: agent.metadata.labels?.[LABEL_ROLE] || "",
               };
               // v1alpha2: read type and split specs
               if (agent.spec.type === "Declarative") {
@@ -362,7 +359,6 @@ function AgentPageContent({ isEditMode, isViewMode, agentName, agentNamespace }:
         description: state.description,
         privateMode: state.privateMode,
         category: state.category || undefined,
-        role: state.role || undefined,
         type: state.agentType,
         systemPrompt: state.systemPrompt,
         modelName: state.selectedModel?.ref || "",
@@ -554,29 +550,6 @@ function AgentPageContent({ isEditMode, isViewMode, agentName, agentNamespace }:
                     onValueChange={(value) => setState(prev => ({ ...prev, category: value }))}
                     disabled={state.isSubmitting || state.isLoading}
                   />
-                </div>
-
-
-                <div>
-                  <label className="text-sm mb-2 block">Role (optional)</label>
-                  <p className="text-xs mb-2 block text-muted-foreground">
-                    Indicate whether this agent orchestrates other agents or serves as a sub-agent.
-                  </p>
-                  <Select
-                    value={state.role || undefined}
-                    onValueChange={(val) => setState(prev => ({ ...prev, role: val === "__none__" ? "" : val }))}
-                    disabled={state.isSubmitting || state.isLoading}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select role..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">None</SelectItem>
-                      {ROLE_OPTIONS.map(opt => (
-                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
                 </div>
 
                 {state.agentType === "Declarative" && (
