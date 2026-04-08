@@ -14,7 +14,7 @@ import { useAgents } from "./AgentsProvider";
 import type { AgentResponse } from "@/types";
 import { k8sRefUtils } from "@/lib/k8sUtils";
 import { useUserStore } from "@/lib/userStore";
-import { LABEL_CATEGORY, LABEL_TOOL_TYPE, LABEL_ROLE } from "@/lib/constants";
+import { LABEL_CATEGORY, LABEL_TOOL_TYPE } from "@/lib/constants";
 import type { PrivacyFilter } from "@/lib/constants";
 
 const UNCATEGORIZED = "Uncategorized";
@@ -37,7 +37,6 @@ export default function AgentList() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
   const [selectedToolTypes, setSelectedToolTypes] = useState<Set<string>>(new Set());
-  const [selectedRoles, setSelectedRoles] = useState<Set<string>>(new Set());
   const [privacyFilter, setPrivacyFilter] = useState<PrivacyFilter>("all");
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
 
@@ -52,15 +51,6 @@ export default function AgentList() {
     const s = new Set<string>();
     agents?.forEach((a) => {
       const v = a.agent.metadata.labels?.[LABEL_TOOL_TYPE];
-      if (v) s.add(v);
-    });
-    return s;
-  }, [agents]);
-
-  const allRoles = useMemo(() => {
-    const s = new Set<string>();
-    agents?.forEach((a) => {
-      const v = a.agent.metadata.labels?.[LABEL_ROLE];
       if (v) s.add(v);
     });
     return s;
@@ -98,10 +88,6 @@ export default function AgentList() {
       const toolType = a.agent.metadata.labels?.[LABEL_TOOL_TYPE] || "";
       const matchesToolType = selectedToolTypes.size === 0 || (toolType !== "" && selectedToolTypes.has(toolType));
 
-      // Role
-      const role = a.agent.metadata.labels?.[LABEL_ROLE] || "";
-      const matchesRole = selectedRoles.size === 0 || (role !== "" && selectedRoles.has(role));
-
       // Privacy
       const ownerId = a.user_id || a.agent.metadata.annotations?.["kagent.dev/user-id"] || "";
       const isOwner = ownerId === currentUserId;
@@ -115,9 +101,9 @@ export default function AgentList() {
         matchesPrivacy = isOwner;
       }
 
-      return matchesSearch && matchesCategory && matchesToolType && matchesRole && matchesPrivacy;
+      return matchesSearch && matchesCategory && matchesToolType && matchesPrivacy;
     });
-  }, [agents, searchTerm, selectedCategories, selectedToolTypes, selectedRoles, privacyFilter, currentUserId]);
+  }, [agents, searchTerm, selectedCategories, selectedToolTypes, privacyFilter, currentUserId]);
 
   // Group filtered agents by category
   const groupedAgents = useMemo(() => {
@@ -142,14 +128,12 @@ export default function AgentList() {
     searchTerm !== "" ||
     selectedCategories.size > 0 ||
     selectedToolTypes.size > 0 ||
-    selectedRoles.size > 0 ||
     privacyFilter !== "all";
 
   const handleClearAllFilters = () => {
     setSearchTerm("");
     setSelectedCategories(new Set());
     setSelectedToolTypes(new Set());
-    setSelectedRoles(new Set());
     setPrivacyFilter("all");
   };
 
@@ -196,12 +180,6 @@ export default function AgentList() {
                 values: allToolTypes,
                 selected: selectedToolTypes,
                 onToggle: (v) => setSelectedToolTypes((p) => toggleSetItem(p, v)),
-              },
-              {
-                label: "Role",
-                values: allRoles,
-                selected: selectedRoles,
-                onToggle: (v) => setSelectedRoles((p) => toggleSetItem(p, v)),
               },
               {
                 label: "Category",
