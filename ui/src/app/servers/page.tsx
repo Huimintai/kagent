@@ -6,6 +6,7 @@ import { ToolServerResponse } from "@/types";
 import { getServers } from "../actions/servers";
 import Link from "next/link";
 import { toast } from "sonner";
+import { ALLOWED_NAMESPACE } from "@/lib/appConfig";
 
 export default function ServersPage() {
   const [servers, setServers] = useState<ToolServerResponse[]>([]);
@@ -21,7 +22,11 @@ export default function ServersPage() {
       setIsLoading(true);
       const serversResponse = await getServers();
       if (!serversResponse.error && serversResponse.data) {
-        const sortedServers = [...serversResponse.data].sort((a, b) => {
+        let filtered = serversResponse.data;
+        if (ALLOWED_NAMESPACE) {
+          filtered = filtered.filter((s) => s.ref?.startsWith(ALLOWED_NAMESPACE + "/"));
+        }
+        const sortedServers = [...filtered].sort((a, b) => {
           return (a.ref || '').localeCompare(b.ref || '');
         });
         setServers(sortedServers);
