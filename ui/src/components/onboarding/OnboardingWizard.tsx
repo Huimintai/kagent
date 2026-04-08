@@ -151,7 +151,7 @@ export function OnboardingWizard({ onOnboardingComplete, onSkip }: OnboardingWiz
   const renderCurrentStep = () => {
       switch (currentStep) {
           case 0:
-              return <WelcomeStep onNext={handleNextFromWelcome} />;
+              return <WelcomeStep onNext={onOnboardingComplete} />;
           case 1:
               return <ModelConfigStep
                           existingModels={existingModels}
