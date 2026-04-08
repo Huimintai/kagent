@@ -316,6 +316,24 @@ func (h *AgentsHandler) HandleUpdateAgent(w ErrorResponseWriter, r *http.Request
 		return
 	}
 
+	// Eagerly sync access metadata to the database so that subsequent list
+	// requests reflect the updated visibility before the async controller
+	// reconciliation runs.
+	agentID := utils.ConvertToPythonIdentifier(utils.GetObjectRef(existingAgent))
+	if dbAgent, err := h.DatabaseService.GetAgent(r.Context(), agentID); err == nil && dbAgent != nil {
+		privateMode := utils.DefaultAgentPrivateMode
+		if rawPM, ok := existingAgent.GetAnnotations()[utils.AgentPrivateModeAnnotation]; ok {
+			if parsed, parseErr := strconv.ParseBool(rawPM); parseErr == nil {
+				privateMode = parsed
+			}
+		}
+		dbAgent.UserID = userID
+		dbAgent.PrivateMode = privateMode
+		if err := h.DatabaseService.StoreAgent(r.Context(), dbAgent); err != nil {
+			log.Error(err, "Failed to sync agent access metadata to database (non-fatal)")
+		}
+	}
+
 	log.Info("Successfully updated agent")
 	data := api.NewResponse(existingAgent, "Successfully updated agent", false)
 	RespondWithJSON(w, http.StatusOK, data)
