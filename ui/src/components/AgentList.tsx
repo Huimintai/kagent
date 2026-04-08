@@ -113,8 +113,8 @@ export default function AgentList() {
       let matchesPrivacy = true;
       if (privacyFilter === "public") {
         matchesPrivacy = !isPrivate;
-      } else if (privacyFilter === "my-private") {
-        matchesPrivacy = isPrivate && isOwner;
+      } else if (privacyFilter === "my") {
+        matchesPrivacy = isOwner;
       }
 
       return matchesSearch && matchesCategory && matchesToolType && matchesRole && matchesPrivacy;

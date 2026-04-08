@@ -52,7 +52,7 @@ export function AgentFilterToolbar({
           <TabsList>
             <TabsTrigger value="all">All</TabsTrigger>
             <TabsTrigger value="public">Public</TabsTrigger>
-            <TabsTrigger value="my-private">My Private</TabsTrigger>
+            <TabsTrigger value="my">My</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>

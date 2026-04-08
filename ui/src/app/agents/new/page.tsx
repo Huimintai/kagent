@@ -23,8 +23,8 @@ import { NamespaceCombobox } from "@/components/NamespaceCombobox";
 import { CategoryCombobox } from "@/components/CategoryCombobox";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { isAgentProtected, ALLOWED_NAMESPACE } from "@/lib/appConfig";
 import { LABEL_TOOL_TYPE, LABEL_ROLE, LABEL_CATEGORY, ROLE_OPTIONS } from "@/lib/constants";
 
@@ -533,26 +533,21 @@ function AgentPageContent({ isEditMode, isViewMode, agentName, agentNamespace }:
                       Private agents are visible only to their owner. Public agents can be viewed by all users.
                     </p>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs text-muted-foreground">{state.privateMode ? "Private" : "Public"}</span>
-                    <Switch
-                      id="private-mode-toggle"
-                      checked={state.privateMode}
-                      onCheckedChange={(checked) => setState(prev => ({ ...prev, privateMode: !!checked }))}
-                      disabled={state.isSubmitting || state.isLoading || !isEditMode}
-                    />
-                  </div>
+                  <Tabs
+                    value={state.privateMode ? "private" : "public"}
+                    onValueChange={(v) => setState(prev => ({ ...prev, privateMode: v === "private" }))}
+                  >
+                    <TabsList>
+                      <TabsTrigger value="public" disabled={state.isSubmitting || state.isLoading}>Public</TabsTrigger>
+                      <TabsTrigger value="private" disabled={state.isSubmitting || state.isLoading}>Private</TabsTrigger>
+                    </TabsList>
+                  </Tabs>
                 </div>
-                {!isEditMode && (
-                  <p className="text-xs text-muted-foreground -mt-3">
-                    New agents always start as private. You can make them public later by editing.
-                  </p>
-                )}
 
                 <div>
                   <label className="text-sm mb-2 block">Category (optional)</label>
                   <p className="text-xs mb-2 block text-muted-foreground">
-                    Assign a category to group agents in the dashboard (e.g. common, network, observability, dr).
+                    Assign a category to group agents in the dashboard (e.g. velero, istio, prometheus).
                   </p>
                   <CategoryCombobox
                     value={state.category}
