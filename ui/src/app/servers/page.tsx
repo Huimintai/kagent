@@ -1,50 +1,30 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Server, Trash2, ChevronDown, ChevronRight, MoreHorizontal, Plus, FunctionSquare } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { ToolServerResponse, ToolServerCreateRequest } from "@/types";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { createServer, deleteServer, getServers, getToolServerTypes } from "../actions/servers";
-import { AddServerDialog } from "@/components/AddServerDialog";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { Server, ChevronDown, ChevronRight, FunctionSquare } from "lucide-react";
+import { ToolServerResponse } from "@/types";
+import { getServers } from "../actions/servers";
 import Link from "next/link";
 import { toast } from "sonner";
-import { useAgents } from "@/components/AgentsProvider";
 
 export default function ServersPage() {
-  const { refreshTools } = useAgents();
-
-  // State for servers and tools
   const [servers, setServers] = useState<ToolServerResponse[]>([]);
-  const [toolServerTypes, setToolServerTypes] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [expandedServers, setExpandedServers] = useState<Set<string>>(new Set());
 
-  // Dialog states
-  const [showAddServer, setShowAddServer] = useState(false);
-  const [showConfirmDelete, setShowConfirmDelete] = useState<string | null>(null);
-  const [openDropdownMenu, setOpenDropdownMenu] = useState<string | null>(null);
-
-  // Fetch data on component mount
   useEffect(() => {
     fetchServers();
-    fetchToolServerTypes();
   }, []);
 
-  // Fetch servers
   const fetchServers = async () => {
     try {
       setIsLoading(true);
-
       const serversResponse = await getServers();
       if (!serversResponse.error && serversResponse.data) {
         const sortedServers = [...serversResponse.data].sort((a, b) => {
           return (a.ref || '').localeCompare(b.ref || '');
         });
         setServers(sortedServers);
-        
-        // Start with all servers collapsed
         setExpandedServers(new Set());
       } else {
         console.error("Failed to fetch servers:", serversResponse);
@@ -53,73 +33,6 @@ export default function ServersPage() {
     } catch (error) {
       console.error("Error fetching servers:", error);
       toast.error("An error occurred while fetching servers.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-  
-  const fetchToolServerTypes = async () => {
-    try {
-      setIsLoading(true);
-
-      const toolServerTypes = await getToolServerTypes();
-      if (!toolServerTypes.error && toolServerTypes.data) {
-        setToolServerTypes(toolServerTypes.data);
-      } else {
-        console.error("Failed to fetch tool server types:", toolServerTypes);
-        toast.error(toolServerTypes.error || "Failed to fetch tool server types.");
-      }
-    } catch (error) {
-      console.error("Error fetching supported tool server types:", error);
-      toast.error("An error occurred while fetching supported tool server types.");
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  // Handle server deletion
-  const handleDeleteServer = async (serverName: string) => {
-    try {
-      setIsLoading(true);
-
-      const response = await deleteServer(serverName);
-
-      if (!response.error) {
-        toast.success("Server deleted successfully");
-        await fetchServers();
-        await refreshTools();
-      } else {
-        toast.error(response.error || "Failed to delete server");
-      }
-    } catch (error) {
-      console.error("Error deleting server:", error);
-      toast.error("Failed to delete server");
-    } finally {
-      setIsLoading(false);
-      setShowConfirmDelete(null);
-    }
-  };
-
-  // Handle adding a new server
-  const handleAddServer = async (serverRequest: ToolServerCreateRequest) => {
-    try {
-      setIsLoading(true);
-
-      const response = await createServer(serverRequest);
-
-      if (response.error) {
-        throw new Error(response.error || "Failed to add server");
-      }
-
-      toast.success("Server added successfully");
-      setShowAddServer(false);
-      await fetchServers();
-      await refreshTools();
-    } catch (error) {
-      console.error("Error adding server:", error);
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      toast.error(`Failed to add server: ${errorMessage}`);
-      throw error; // Re-throw to be caught by the dialog
     } finally {
       setIsLoading(false);
     }
@@ -147,10 +60,7 @@ export default function ServersPage() {
           </Link>
         </div>
         {servers.length > 0 && (
-          <Button onClick={() => setShowAddServer(true)} variant="default">
-            <Plus className="h-4 w-4 mr-2" />
-            Add MCP Server
-          </Button>
+          <span className="text-sm text-muted-foreground">{servers.length} servers</span>
         )}
       </div>
 
@@ -168,63 +78,24 @@ export default function ServersPage() {
 
             return (
               <div key={server.ref} className="border rounded-md overflow-hidden">
-                {/* Server Header */}
-                <div className="bg-secondary/10 p-4">
-                  <div className="flex items-center justify-between">
-                    <div 
-                      className="flex items-center gap-3 cursor-pointer" 
-                      onClick={() => toggleServer(serverName)}
-                    >
-                      {isExpanded ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
-                      <div className="flex items-center gap-2">
-                        <div>
-                          <div className="font-medium">{server.ref}</div>
-                          <div className="text-xs text-muted-foreground flex items-center gap-2">
-                            <span className="font-mono">{server.ref}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <DropdownMenu 
-                        open={openDropdownMenu === serverName} 
-                        onOpenChange={(isOpen) => setOpenDropdownMenu(isOpen ? serverName : null)}
-                      >
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                           <DropdownMenuItem 
-                             className="text-red-600 focus:text-red-700 focus:bg-red-50"
-                             onSelect={(e) => {
-                               e.preventDefault();
-                               setOpenDropdownMenu(null);
-                               setShowConfirmDelete(serverName);
-                             }}
-                           >
-                             <Trash2 className="h-4 w-4 mr-2" />
-                             Remove MCP Server
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                <div
+                  className="bg-secondary/10 p-4 cursor-pointer"
+                  onClick={() => toggleServer(serverName)}
+                >
+                  <div className="flex items-center gap-3">
+                    {isExpanded ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
+                    <div>
+                      <div className="font-medium">{server.ref}</div>
                     </div>
                   </div>
                 </div>
 
-                {/* Server Tools List */}
                 {isExpanded && (
                   <div className="p-4">
                     {server.discoveredTools && server.discoveredTools.length > 0 ? (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         {server.discoveredTools
-                          .sort((a, b) => {
-                            const aName = a.name || "";
-                            const bName = b.name || "";
-                            return aName.localeCompare(bName);
-                          })
+                          .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
                           .map((tool) => (
                             <div key={tool.name} className="p-3 border rounded-md hover:bg-secondary/5 transition-colors">
                               <div className="flex items-start gap-2">
@@ -250,34 +121,9 @@ export default function ServersPage() {
         <div className="flex flex-col items-center justify-center h-[300px] text-center p-4 border rounded-lg bg-secondary/5">
           <Server className="h-12 w-12 text-muted-foreground mb-4 opacity-20" />
           <h3 className="font-medium text-lg">No MCP servers connected</h3>
-          <p className="text-muted-foreground mt-1 mb-4">Add an MCP server to discover and use tools.</p>
-          <Button onClick={() => setShowAddServer(true)} variant="default">
-            <Plus className="h-4 w-4 mr-2" />
-            Add MCP Server
-          </Button>
+          <p className="text-muted-foreground mt-1 mb-4">MCP servers are managed by the platform administrator.</p>
         </div>
       )}
-
-      {/* Add server dialog */}
-      <AddServerDialog 
-        open={showAddServer} 
-        supportedToolServerTypes={toolServerTypes}
-        onOpenChange={setShowAddServer} 
-        onAddServer={handleAddServer}
-      />
-
-      {/* Confirm delete dialog */}
-      <ConfirmDialog
-        open={showConfirmDelete !== null}
-        onOpenChange={(open) => {
-          if (!open) {
-            setShowConfirmDelete(null);
-          }
-        }}
-        title="Delete MCP Server"
-        description="Are you sure you want to delete this MCP server? This will also delete all associated tools and cannot be undone."
-        onConfirm={() => showConfirmDelete !== null && handleDeleteServer(showConfirmDelete)}
-      />
     </div>
   );
 }

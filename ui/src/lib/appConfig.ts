@@ -40,3 +40,13 @@ export function isAgentProtected(agentName: string): boolean {
   if (PROTECTED_AGENT_NAMES.length === 0) return false;
   return PROTECTED_AGENT_NAMES.includes(agentName.toLowerCase());
 }
+
+/**
+ * Check if an agent is effectively protected (immutable) for the current user.
+ * Protected if: statically protected by env var, OR the current user is not the owner.
+ */
+export function isEffectivelyProtected(agentName: string, isOwner: boolean): boolean {
+  if (isAgentProtected(agentName)) return true;
+  if (!isOwner) return true;
+  return false;
+}

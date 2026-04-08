@@ -20,11 +20,13 @@ import { AgentFormData } from "@/components/AgentsProvider";
 import { Tool, EnvVar } from "@/types";
 import { toast } from "sonner";
 import { NamespaceCombobox } from "@/components/NamespaceCombobox";
+import { CategoryCombobox } from "@/components/CategoryCombobox";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { isAgentProtected, ALLOWED_NAMESPACE } from "@/lib/appConfig";
+import { LABEL_TOOL_TYPE, LABEL_CATEGORY } from "@/lib/constants";
 
 const PRIVATE_MODE_ANNOTATION = "kagent.dev/private-mode";
 
@@ -75,6 +77,8 @@ function AgentPageContent({ isEditMode, isViewMode, agentName, agentNamespace }:
     namespace: string;
     description: string;
     privateMode: boolean;
+    category: string;
+    toolType: string;
     agentType: AgentType;
     systemPrompt: string;
     selectedModel: SelectedModelType | null;
@@ -102,6 +106,8 @@ function AgentPageContent({ isEditMode, isViewMode, agentName, agentNamespace }:
     namespace: ALLOWED_NAMESPACE || "default",
     description: "",
     privateMode: true,
+    category: "",
+    toolType: "",
     agentType: "Declarative",
     systemPrompt: isEditMode ? "" : DEFAULT_SYSTEM_PROMPT,
     selectedModel: null,
@@ -156,6 +162,8 @@ function AgentPageContent({ isEditMode, isViewMode, agentName, agentNamespace }:
                 description: agent.spec?.description || "",
                 privateMode: agentResponse.private_mode ?? (agent.metadata.annotations?.[PRIVATE_MODE_ANNOTATION] === "true"),
                 agentType: agent.spec.type,
+                category: agent.metadata.labels?.[LABEL_CATEGORY] || "",
+                toolType: agent.metadata.labels?.[LABEL_TOOL_TYPE] || "",
               };
               // v1alpha2: read type and split specs
               if (agent.spec.type === "Declarative") {
@@ -350,6 +358,7 @@ function AgentPageContent({ isEditMode, isViewMode, agentName, agentNamespace }:
         namespace: state.namespace,
         description: state.description,
         privateMode: state.privateMode,
+        category: state.category || undefined,
         type: state.agentType,
         systemPrompt: state.systemPrompt,
         modelName: state.selectedModel?.ref || "",
@@ -491,7 +500,7 @@ function AgentPageContent({ isEditMode, isViewMode, agentName, agentNamespace }:
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="Declarative">Declarative</SelectItem>
-                      <SelectItem value="BYO">BYO</SelectItem>
+                      <SelectItem value="BYO" disabled>BYO (coming soon)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -520,15 +529,27 @@ function AgentPageContent({ isEditMode, isViewMode, agentName, agentNamespace }:
                       Private agents are visible only to their owner. Public agents can be viewed by all users.
                     </p>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs text-muted-foreground">{state.privateMode ? "Private" : "Public"}</span>
-                    <Switch
-                      id="private-mode-toggle"
-                      checked={state.privateMode}
-                      onCheckedChange={(checked) => setState(prev => ({ ...prev, privateMode: !!checked }))}
-                      disabled={state.isSubmitting || state.isLoading}
-                    />
-                  </div>
+                  <Tabs
+                    value={state.privateMode ? "private" : "public"}
+                    onValueChange={(v) => setState(prev => ({ ...prev, privateMode: v === "private" }))}
+                  >
+                    <TabsList>
+                      <TabsTrigger value="public" disabled={state.isSubmitting || state.isLoading}>Public</TabsTrigger>
+                      <TabsTrigger value="private" disabled={state.isSubmitting || state.isLoading}>Private</TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                </div>
+
+                <div>
+                  <label className="text-sm mb-2 block">Category (optional)</label>
+                  <p className="text-xs mb-2 block text-muted-foreground">
+                    Assign a category to group agents in the dashboard (e.g. velero, istio, prometheus).
+                  </p>
+                  <CategoryCombobox
+                    value={state.category}
+                    onValueChange={(value) => setState(prev => ({ ...prev, category: value }))}
+                    disabled={state.isSubmitting || state.isLoading}
+                  />
                 </div>
 
                 {state.agentType === "Declarative" && (
@@ -584,169 +605,8 @@ function AgentPageContent({ isEditMode, isViewMode, agentName, agentNamespace }:
 
                   </>
                 )}
-                {state.agentType === "BYO" && (
-                  <div className="space-y-4">
-                    <div>
-                      <Label className="text-sm mb-2 block">Container image</Label>
-                      <Input
-                        value={state.byoImage}
-                        onChange={(e) => setState(prev => ({ ...prev, byoImage: e.target.value }))}
-                        onBlur={() => validateField('model', state.byoImage)}
-                        placeholder="e.g. ghcr.io/you/agent:latest"
-                        disabled={state.isSubmitting || state.isLoading}
-                      />
-                      {state.errors.model && <p className="text-red-500 text-sm mt-1">{state.errors.model}</p>}
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label className="text-sm mb-2 block">Command (optional)</Label>
-                        <Input
-                          value={state.byoCmd}
-                          onChange={(e) => setState(prev => ({ ...prev, byoCmd: e.target.value }))}
-                          placeholder="/app/start"
-                          disabled={state.isSubmitting || state.isLoading}
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-sm mb-2 block">Args (space-separated)</Label>
-                        <Input
-                          value={state.byoArgs}
-                          onChange={(e) => setState(prev => ({ ...prev, byoArgs: e.target.value }))}
-                          placeholder="--port 8080 --flag"
-                          disabled={state.isSubmitting || state.isLoading}
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label className="text-sm mb-2 block">Replicas</Label>
-                        <Input
-                          type="number"
-                          value={state.replicas}
-                          onChange={(e) => setState(prev => ({ ...prev, replicas: e.target.value }))}
-                          placeholder="e.g. 1"
-                          disabled={state.isSubmitting || state.isLoading}
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-sm mb-2 block">Image Pull Policy</Label>
-                        <Select
-                          value={state.imagePullPolicy}
-                          onValueChange={(val) => setState(prev => ({ ...prev, imagePullPolicy: val }))}
-                          disabled={state.isSubmitting || state.isLoading}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select policy" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Always">Always</SelectItem>
-                            <SelectItem value="IfNotPresent">IfNotPresent</SelectItem>
-                            <SelectItem value="Never">Never</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label className="text-sm">Image Pull Secrets</Label>
-                      {(state.imagePullSecrets || []).map((name, idx) => (
-                        <div key={idx} className="flex gap-2 items-center">
-                          <Input
-                            placeholder="Secret name"
-                            value={name}
-                            onChange={(e) => {
-                              const copy = [...state.imagePullSecrets];
-                              copy[idx] = e.target.value;
-                              setState(prev => ({ ...prev, imagePullSecrets: copy }));
-                            }}
-                            disabled={state.isSubmitting || state.isLoading}
-                          />
-                          <Button variant="outline" onClick={() => setState(prev => ({ ...prev, imagePullSecrets: [...prev.imagePullSecrets, ""] }))}>Add</Button>
-                          <Button variant="ghost" onClick={() => setState(prev => ({ ...prev, imagePullSecrets: prev.imagePullSecrets.filter((_, i) => i !== idx) }))} disabled={(state.imagePullSecrets || []).length <= 1}>Remove</Button>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label className="text-sm">Environment Variables</Label>
-                      {(state.envPairs || []).map((pair, index) => (
-                        <div key={index} className="flex flex-col gap-2 border rounded-md p-2">
-                          <div className="flex items-center gap-2">
-                            <Input placeholder="Name (e.g., GOOGLE_API_KEY)" value={pair.name} onChange={(e) => {
-                              const updated = [...state.envPairs];
-                              updated[index] = { ...updated[index], name: e.target.value };
-                              setState(prev => ({ ...prev, envPairs: updated }));
-                            }} className="flex-1" disabled={state.isSubmitting || state.isLoading} />
-                            <div className="flex items-center gap-2">
-                              <Checkbox id={`env-secret-${index}`} checked={!!pair.isSecret} onCheckedChange={(checked) => {
-                                const updated = [...state.envPairs];
-                                updated[index] = { ...updated[index], isSecret: !!checked };
-                                setState(prev => ({ ...prev, envPairs: updated }));
-                              }} />
-                              <Label htmlFor={`env-secret-${index}`} className="text-xs">From Secret</Label>
-                            </div>
-                            <Button variant="ghost" size="sm" onClick={() => setState(prev => ({ ...prev, envPairs: prev.envPairs.filter((_, i) => i !== index) }))} disabled={(state.envPairs || []).length === 1} className="p-1">
-                              <Trash2 className="h-4 w-4 text-red-500" />
-                            </Button>
-                          </div>
-                          {!pair.isSecret ? (
-                            <Input placeholder="Value" value={pair.value ?? ""} onChange={(e) => {
-                              const updated = [...state.envPairs];
-                              updated[index] = { ...updated[index], value: e.target.value };
-                              setState(prev => ({ ...prev, envPairs: updated }));
-                            }} disabled={state.isSubmitting || state.isLoading} />
-                          ) : (
-                            <div className="grid grid-cols-3 gap-2">
-                              <Input placeholder="Secret name" value={pair.secretName ?? ""} onChange={(e) => {
-                                const updated = [...state.envPairs];
-                                updated[index] = { ...updated[index], secretName: e.target.value };
-                                setState(prev => ({ ...prev, envPairs: updated }));
-                              }} disabled={state.isSubmitting || state.isLoading} />
-                              <Input placeholder="Secret key" value={pair.secretKey ?? ""} onChange={(e) => {
-                                const updated = [...state.envPairs];
-                                updated[index] = { ...updated[index], secretKey: e.target.value };
-                                setState(prev => ({ ...prev, envPairs: updated }));
-                              }} disabled={state.isSubmitting || state.isLoading} />
-                              <div className="flex items-center gap-2">
-                                <Checkbox id={`env-optional-${index}`} checked={!!pair.optional} onCheckedChange={(checked) => {
-                                  const updated = [...state.envPairs];
-                                  updated[index] = { ...updated[index], optional: !!checked };
-                                  setState(prev => ({ ...prev, envPairs: updated }));
-                                }} />
-                                <Label htmlFor={`env-optional-${index}`} className="text-xs">Optional</Label>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                      <Button variant="outline" size="sm" onClick={() => setState(prev => ({ ...prev, envPairs: [...prev.envPairs, { name: "", value: "", isSecret: false }] }))} className="mt-2 w-full">
-                        <PlusCircle className="h-4 w-4 mr-2" />
-                        Add Environment Variable
-                      </Button>
-                    </div>
-
-                    <div>
-                      <Label className="text-sm mb-2 block">Service Account Name (optional)</Label>
-                      <p className="text-xs mb-2 block text-muted-foreground">
-                        Name of an existing Kubernetes ServiceAccount for the agent pod. If not set, a cluster-wide default or auto-created SA will be used.
-                      </p>
-                      <Input
-                        value={state.serviceAccountName}
-                        onChange={(e) => setState(prev => ({ ...prev, serviceAccountName: e.target.value }))}
-                        onBlur={() => validateField('serviceAccountName', state.serviceAccountName)}
-                        className={`${state.errors.serviceAccountName ? "border-red-500" : ""}`}
-                        placeholder="e.g. my-workload-identity-sa"
-                        disabled={state.isSubmitting || state.isLoading}
-                      />
-                      {state.errors.serviceAccountName && <p className="text-red-500 text-sm mt-1">{state.errors.serviceAccountName}</p>}
-                    </div>
-
-                  </div>
-                )}
               </CardContent>
             </Card>
-            {state.agentType === "Declarative" && (
-              <>
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
@@ -883,8 +743,6 @@ function AgentPageContent({ isEditMode, isViewMode, agentName, agentNamespace }:
                     </div>
                   </CardContent>
                 </Card>
-              </>
-            )}
             {!isViewMode && (
               <div className="flex justify-end">
                 <Button className="bg-violet-500 hover:bg-violet-600" onClick={handleSaveAgent} disabled={state.isSubmitting || state.isLoading}>
