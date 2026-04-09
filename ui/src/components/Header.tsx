@@ -40,7 +40,7 @@ export function Header() {
         <div className="flex justify-between items-center">
           <Link href="/" className="flex items-center gap-3">
             <KAgentLogoWithText className="h-5" />
-            <span className="text-sm font-semibold text-muted-foreground hidden lg:block">SAP HANA Agent Platform</span>
+            <span className="text-sm font-semibold text-muted-foreground hidden lg:block">DBCI kagent Playground</span>
           </Link>
           
           {/* Mobile menu button */}
