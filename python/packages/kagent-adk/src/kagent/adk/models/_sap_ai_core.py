@@ -263,19 +263,45 @@ class KAgentSAPAICoreLlm(BaseLlm):
             raise ValueError("SAP AI Core requires base_url")
 
         base = self.base_url.rstrip("/")
-        headers = await self._get_headers()
         client = self._get_http_client()
-        resp = await client.get(f"{base}/v2/lm/deployments", headers=headers)
-        resp.raise_for_status()
+        url = f"{base}/v2/lm/deployments"
+
+        max_retries = 4
+        base_delay = 1.0  # seconds
+        for attempt in range(max_retries):
+            headers = await self._get_headers()
+            try:
+                resp = await client.get(url, headers=headers)
+                if resp.status_code in (502, 503, 504):
+                    delay = base_delay * (2 ** attempt)
+                    logger.warning(
+                        "SAP AI Core lm/deployments returned %d (attempt %d/%d), retrying in %.1fs",
+                        resp.status_code, attempt + 1, max_retries, delay,
+                    )
+                    if attempt + 1 < max_retries:
+                        await asyncio.sleep(delay)
+                        continue
+                resp.raise_for_status()
+                break
+            except httpx.HTTPStatusError:
+                if attempt + 1 >= max_retries:
+                    raise
+                delay = base_delay * (2 ** attempt)
+                logger.warning(
+                    "SAP AI Core lm/deployments error (attempt %d/%d), retrying in %.1fs",
+                    attempt + 1, max_retries, delay,
+                )
+                await asyncio.sleep(delay)
+
         deployments = resp.json()
 
         valid: list[tuple[str, str]] = []
         for dep in deployments.get("resources", []):
             if dep.get("scenarioId") == "orchestration" and dep.get("status") == "RUNNING":
-                url = dep.get("deploymentUrl", "")
+                dep_url = dep.get("deploymentUrl", "")
                 created = dep.get("createdAt", "")
-                if url:
-                    valid.append((url, created))
+                if dep_url:
+                    valid.append((dep_url, created))
 
         if not valid:
             raise ValueError("No running orchestration deployment found in SAP AI Core")

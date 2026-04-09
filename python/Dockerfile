@@ -129,4 +129,4 @@ ENV VIRTUAL_ENV=/.kagent/.venv
 
 WORKDIR /app
 
-ENTRYPOINT ["kagent-adk", "run", "--host", "0.0.0.0", "--port", "8080"]
+ENTRYPOINT ["kagent-adk", "static", "--host", "0.0.0.0", "--port", "8080"]
