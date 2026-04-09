@@ -30,7 +30,7 @@ export function WelcomeStep({ onNext }: WelcomeStepProps) {
                 </div>
             )}
             <div className="w-full text-center pt-6 pb-2 lg:hidden">
-                <h1 className="text-5xl font-bold text-primary tracking-tight">SAP HANA Agent Platform</h1>
+                <h1 className="text-5xl font-bold text-primary tracking-tight">DBCI kagent Playground</h1>
             </div>
             <CardHeader className="items-center text-center pt-4 pb-6 border-b">
                 <KAgentLogoWithText className="h-10 w-auto mb-3" />

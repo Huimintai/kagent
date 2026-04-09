@@ -30,8 +30,8 @@ interface OnboardingStateData {
 export const K8S_AGENT_DEFAULTS = {
     name: "sap-k8s-assistant",
     namespace: "kagent",
-    description: "SAP HANA Agent Platform Kubernetes Assistant for cluster operations.",
-    instructions: `You're a professional SAP HANA Agent Platform assistant that uses Kubernetes tools to answer users questions about the cluster.
+    description: "DBCI kagent Playground Kubernetes Assistant for cluster operations.",
+    instructions: `You're a professional DBCI kagent Playground assistant that uses Kubernetes tools to answer users questions about the cluster.
 
 # Instructions
 - If user question is unclear, ask for clarification before running any tools
@@ -201,7 +201,7 @@ export function OnboardingWizard({ onOnboardingComplete, onSkip }: OnboardingWiz
 
   return (
     <div className="flex min-h-screen">
-      {/* Left panel - SAP brand area */}
+      {/* Left panel - DBCI brand area */}
       <div
         className="hidden lg:flex w-2/5 flex-col items-center justify-center gap-4 px-10"
         style={{background: "linear-gradient(160deg, #002d6e 0%, #003d8f 40%, #0057c2 100%)"}}
@@ -211,7 +211,7 @@ export function OnboardingWizard({ onOnboardingComplete, onSkip }: OnboardingWiz
             <svg viewBox="0 0 40 40" className="w-8 h-8 fill-white"><rect x="4" y="4" width="14" height="14" rx="2"/><rect x="22" y="4" width="14" height="14" rx="2" opacity="0.6"/><rect x="4" y="22" width="14" height="14" rx="2" opacity="0.6"/><rect x="22" y="22" width="14" height="14" rx="2" opacity="0.3"/></svg>
           </div>
         </div>
-        <h1 className="text-3xl font-bold text-white text-center leading-tight">SAP HANA<br/>Agent Platform</h1>
+        <h1 className="text-3xl font-bold text-white text-center leading-tight">DBCI kagent<br/>Playground</h1>
         <p className="text-blue-200 text-sm text-center">Bringing <span className="text-white font-semibold">Agentic AI</span> to Cloud Native</p>
         <div className="mt-6 flex gap-2">
           <div className="w-2 h-2 rounded-full bg-white"/>
