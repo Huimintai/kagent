@@ -443,17 +443,9 @@ class CompleteMcpOAuthTool(BaseTool):
             state_key = mcp_token_state_key(server_label)
             tool_context.state[state_key] = access_token
 
-            # Clean up transient OAuth state
-            for key in [
-                _pkce_state_key(server_label),
-                _oauth_state_key(server_label),
-                f"_mcp_oauth_client_id:{server_label}",
-                f"_mcp_oauth_client_secret:{server_label}",
-                f"_mcp_oauth_token_endpoint:{server_label}",
-                f"_mcp_oauth_redirect_uri:{server_label}",
-            ]:
-                if key in tool_context.state:
-                    del tool_context.state[key]
+            # Note: transient OAuth state keys (_pkce_state_key, etc.) are intentionally
+            # left in session state. ADK's State object does not support item deletion,
+            # and these keys are scoped to the session lifetime anyway.
 
             scope = token_resp.get("scope", "")
             logger.info(
