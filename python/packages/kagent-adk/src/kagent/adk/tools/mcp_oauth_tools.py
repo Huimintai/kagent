@@ -452,7 +452,8 @@ class CompleteMcpOAuthTool(BaseTool):
                 f"_mcp_oauth_token_endpoint:{server_label}",
                 f"_mcp_oauth_redirect_uri:{server_label}",
             ]:
-                tool_context.state.pop(key, None)
+                if key in tool_context.state:
+                    del tool_context.state[key]
 
             scope = token_resp.get("scope", "")
             logger.info(
