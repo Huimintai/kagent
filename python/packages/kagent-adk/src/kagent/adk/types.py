@@ -21,6 +21,7 @@ from kagent.adk.models._bedrock import KAgentBedrockLlm
 from kagent.adk.models._ollama import create_ollama_llm
 from kagent.adk.sandbox_code_executer import SandboxedLocalCodeExecutor
 from kagent.adk.tools.ask_user_tool import AskUserTool
+from kagent.adk.tools.mcp_oauth_tools import CompleteMcpOAuthTool, InitiateMcpOAuthTool
 from kagent.adk.tools.set_mcp_token_tool import SetMcpTokenTool
 
 from .models import AzureOpenAI as OpenAIAzure
@@ -417,6 +418,9 @@ class AgentConfig(BaseModel):
         tools.append(AskUserTool())
         # Add built-in set_mcp_token tool — allows the agent to store per-user MCP tokens.
         tools.append(SetMcpTokenTool())
+        # Add built-in MCP OAuth tools — enable agents to authenticate with OAuth-protected MCP servers.
+        tools.append(InitiateMcpOAuthTool())
+        tools.append(CompleteMcpOAuthTool())
 
         # Build before_tool_callback if any tools require approval
         before_tool_callback = make_approval_callback(tools_requiring_approval) if tools_requiring_approval else None
