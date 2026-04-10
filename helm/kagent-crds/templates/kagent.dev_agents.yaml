@@ -10120,6 +10120,14 @@ spec:
                                 type: string
                               maxItems: 50
                               type: array
+                            sessionTokenLabel:
+                              description: |-
+                                SessionTokenLabel enables per-user token injection for this MCP server.
+                                When set, users can call the built-in set_mcp_token tool to store their
+                                personal access token under this label. The token is then injected as
+                                Authorization: Bearer on each MCP tool call, scoped to the current
+                                session only. Example: "github" or "ado"
+                              type: string
                             toolNames:
                               description: |-
                                 The names of the tools to be provided by the ToolServer

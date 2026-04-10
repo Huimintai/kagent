@@ -433,6 +433,14 @@ type McpServerTool struct {
 	// Example: ["x-user-email", "x-tenant-id"]
 	// +optional
 	AllowedHeaders []string `json:"allowedHeaders,omitempty"`
+
+	// SessionTokenLabel enables per-user token injection for this MCP server.
+	// When set, users can call the built-in set_mcp_token tool to store their
+	// personal access token under this label. The token is then injected as
+	// Authorization: Bearer on each MCP tool call, scoped to the current session only.
+	// Example: "github" or "ado"
+	// +optional
+	SessionTokenLabel string `json:"sessionTokenLabel,omitempty"`
 }
 
 type TypedLocalReference struct {
