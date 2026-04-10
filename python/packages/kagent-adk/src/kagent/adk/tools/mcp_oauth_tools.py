@@ -196,6 +196,13 @@ class InitiateMcpOAuthTool(BaseTool):
                             "(recommended for agent flows). Default: 'urn:ietf:wg:oauth:2.0:oob'."
                         ),
                     ),
+                    "client_secret": types.Schema(
+                        type=types.Type.STRING,
+                        description=(
+                            "OAuth client secret. Required for servers that do not support pure PKCE "
+                            "(e.g. GitHub Enterprise). Generate one in your OAuth App settings."
+                        ),
+                    ),
                     "scope": types.Schema(
                         type=types.Type.STRING,
                         description=(
@@ -212,6 +219,7 @@ class InitiateMcpOAuthTool(BaseTool):
         server_label = args.get("server_label", "").strip()
         server_url = args.get("server_url", "").strip()
         client_id = args.get("client_id", "").strip()
+        client_secret = args.get("client_secret", "").strip()
         redirect_uri = args.get("redirect_uri", "").strip() or "urn:ietf:wg:oauth:2.0:oob"
         scope = args.get("scope", "").strip()
 
@@ -271,10 +279,11 @@ class InitiateMcpOAuthTool(BaseTool):
 
             authorization_url = f"{auth_endpoint}?{urlencode(auth_params)}"
 
-            # Store PKCE verifier, state, client_id, and token endpoint in session state for complete step
+            # Store PKCE verifier, state, client_id, client_secret, and token endpoint in session state for complete step
             tool_context.state[_pkce_state_key(server_label)] = verifier
             tool_context.state[_oauth_state_key(server_label)] = state
             tool_context.state[f"_mcp_oauth_client_id:{server_label}"] = client_id
+            tool_context.state[f"_mcp_oauth_client_secret:{server_label}"] = client_secret
             tool_context.state[f"_mcp_oauth_token_endpoint:{server_label}"] = metadata["token_endpoint"]
             tool_context.state[f"_mcp_oauth_redirect_uri:{server_label}"] = redirect_uri
 
@@ -370,6 +379,7 @@ class CompleteMcpOAuthTool(BaseTool):
         verifier = tool_context.state.get(_pkce_state_key(server_label))
         expected_state = tool_context.state.get(_oauth_state_key(server_label))
         client_id = tool_context.state.get(f"_mcp_oauth_client_id:{server_label}")
+        client_secret = tool_context.state.get(f"_mcp_oauth_client_secret:{server_label}", "")
         token_endpoint = tool_context.state.get(f"_mcp_oauth_token_endpoint:{server_label}")
         redirect_uri = tool_context.state.get(f"_mcp_oauth_redirect_uri:{server_label}")
 
@@ -395,9 +405,16 @@ class CompleteMcpOAuthTool(BaseTool):
                 "grant_type": "authorization_code",
                 "code": code,
                 "client_id": client_id or "",
-                "code_verifier": verifier,
-                "redirect_uri": redirect_uri or "urn:ietf:wg:oauth:2.0:oob",
+                "redirect_uri": redirect_uri or "http://localhost:8080/callback",
             }
+
+            # Use client_secret if available (GitHub Enterprise requires it).
+            # Only send PKCE code_verifier when NOT using client_secret, as some
+            # servers reject requests that include both.
+            if client_secret:
+                token_data["client_secret"] = client_secret
+            else:
+                token_data["code_verifier"] = verifier
 
             async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
                 resp = await client.post(
@@ -431,6 +448,7 @@ class CompleteMcpOAuthTool(BaseTool):
                 _pkce_state_key(server_label),
                 _oauth_state_key(server_label),
                 f"_mcp_oauth_client_id:{server_label}",
+                f"_mcp_oauth_client_secret:{server_label}",
                 f"_mcp_oauth_token_endpoint:{server_label}",
                 f"_mcp_oauth_redirect_uri:{server_label}",
             ]:
