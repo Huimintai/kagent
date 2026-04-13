@@ -8,6 +8,7 @@ import { Plus, Menu, X, ChevronDown, Brain, Server, Eye, Hammer, HomeIcon, LogOu
 import { DISABLE_MODEL_CREATION, DISABLE_MCP_SERVER_CREATION } from "@/lib/appConfig";
 import { Identicon } from "./Identicon";
 import { ThemeToggle } from "./ThemeToggle";
+import GitHubConnectButton from "./GitHubConnectButton";
 import { useUserStore } from "@/lib/userStore";
 import {
   DropdownMenu,
@@ -146,6 +147,7 @@ export function Header() {
 
 
             <div className="flex items-center gap-2">
+              <GitHubConnectButton />
               <ThemeToggle />
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -263,6 +265,7 @@ export function Header() {
               </DropdownMenu>
 
               <div className="flex items-center justify-end gap-2 py-2">
+                <GitHubConnectButton />
                 <ThemeToggle />
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
