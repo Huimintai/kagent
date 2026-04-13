@@ -123,8 +123,13 @@ export const SelectToolsDialog: React.FC<SelectToolsDialogProps> = ({ open, onOp
   const filteredAvailableItems = useMemo(() => {
     const searchLower = searchTerm.toLowerCase();
 
+    // Filter tools by allowed namespace (consistent with tools page filtering)
+    const namespaceFilteredTools = ALLOWED_NAMESPACE
+      ? availableTools.filter((t) => t.server_name?.startsWith(ALLOWED_NAMESPACE + "/"))
+      : availableTools;
+
     const allTools: Array<{ tool: ToolsResponse; server: ToolsResponse }> = [];
-    availableTools.forEach((tool) => {
+    namespaceFilteredTools.forEach((tool) => {
       allTools.push({ tool, server: tool });
     });
 
