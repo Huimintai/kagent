@@ -20,10 +20,11 @@ type StreamableHTTPConnectionParams struct {
 }
 
 type HttpMcpServerConfig struct {
-	Params          StreamableHTTPConnectionParams `json:"params"`
-	Tools           []string                       `json:"tools"`
-	AllowedHeaders  []string                       `json:"allowed_headers,omitempty"`
-	RequireApproval []string                       `json:"require_approval,omitempty"`
+	Params             StreamableHTTPConnectionParams `json:"params"`
+	Tools              []string                       `json:"tools"`
+	AllowedHeaders     []string                       `json:"allowed_headers,omitempty"`
+	RequireApproval    []string                       `json:"require_approval,omitempty"`
+	SessionTokenLabel  string                         `json:"session_token_label,omitempty"`
 }
 
 type SseConnectionParams struct {
@@ -38,10 +39,11 @@ type SseConnectionParams struct {
 }
 
 type SseMcpServerConfig struct {
-	Params          SseConnectionParams `json:"params"`
-	Tools           []string            `json:"tools"`
-	AllowedHeaders  []string            `json:"allowed_headers,omitempty"`
-	RequireApproval []string            `json:"require_approval,omitempty"`
+	Params            SseConnectionParams `json:"params"`
+	Tools             []string            `json:"tools"`
+	AllowedHeaders    []string            `json:"allowed_headers,omitempty"`
+	RequireApproval   []string            `json:"require_approval,omitempty"`
+	SessionTokenLabel string              `json:"session_token_label,omitempty"`
 }
 
 type Model interface {
