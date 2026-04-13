@@ -235,6 +235,38 @@ ui:
       port: 8080
       targetPort: 8080
   env: {} # Additional configuration key-value pairs for the ui ConfigMap
+  # -- GitHub OAuth integration for MCP server authentication.
+  # Set clientId and clientSecret to enable the "Connect GitHub" button in the chat UI.
+  github:
+    enabled: false
+    # -- Legacy single-instance config (used when instances is empty)
+    clientId: ""
+    clientSecret: ""
+    oauthUrl: "https://github.com/login/oauth/authorize"
+    tokenUrl: "https://github.com/login/oauth/access_token"
+    scope: "repo read:org read:user"
+    # -- Public-facing origin for OAuth redirect URI (e.g. http://localhost:8082).
+    # Required when the UI is accessed via port-forward or reverse proxy.
+    redirectOrigin: ""
+    # -- Multi-instance config (takes precedence over single-instance when non-empty).
+    # Each entry needs: id, label, clientId, clientSecret, oauthUrl, tokenUrl.
+    # Example:
+    #   instances:
+    #     - id: tools
+    #       label: "github.tools.sap"
+    #       clientId: "abc123"
+    #       clientSecret: "secret1"
+    #       oauthUrl: "https://github.tools.sap/login/oauth/authorize"
+    #       tokenUrl: "https://github.tools.sap/login/oauth/access_token"
+    #       scope: "repo read:org read:user"
+    #     - id: wdf
+    #       label: "github.wdf.sap.corp"
+    #       clientId: "def456"
+    #       clientSecret: "secret2"
+    #       oauthUrl: "https://github.wdf.sap.corp/login/oauth/authorize"
+    #       tokenUrl: "https://github.wdf.sap.corp/login/oauth/access_token"
+    #       scope: "repo read:org read:user"
+    instances: []
   # -- Pod-level security context for the UI pod. Overrides the global podSecurityContext.
   # @default -- (uses global podSecurityContext)
   podSecurityContext: {}

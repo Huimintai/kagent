@@ -33,6 +33,7 @@ DOCKER_BUILD_ARGS ?= --push --platform linux/$(LOCALARCH)
 
 KIND_CLUSTER_NAME ?= kagent
 KIND_IMAGE_VERSION ?= 1.35.0
+KUBE_CONTEXT ?= kind-$(KIND_CLUSTER_NAME)
 
 CONTROLLER_IMAGE_NAME ?= controller
 UI_IMAGE_NAME ?= ui
@@ -348,7 +349,7 @@ helm-install-provider: helm-version check-api-key
 		--create-namespace \
 		--history-max 2    \
 		--timeout 5m 			\
-		--kube-context kind-$(KIND_CLUSTER_NAME) \
+		--kube-context $(KUBE_CONTEXT) \
 		--wait \
 		--set kmcp.enabled=$(KMCP_ENABLED)
 	helm $(HELM_ACTION) kagent helm/kagent \
@@ -356,7 +357,7 @@ helm-install-provider: helm-version check-api-key
 		--create-namespace \
 		--history-max 2    \
 		--timeout 5m       \
-		--kube-context kind-$(KIND_CLUSTER_NAME) \
+		--kube-context $(KUBE_CONTEXT) \
 		--wait \
 		--set ui.service.type=LoadBalancer \
 		--set registry=$(DOCKER_REGISTRY) \
@@ -392,8 +393,8 @@ helm-test-install: helm-install-provider
 
 .PHONY: helm-uninstall
 helm-uninstall:
-	helm uninstall kagent --namespace kagent --kube-context kind-$(KIND_CLUSTER_NAME) --wait
-	helm uninstall kagent-crds --namespace kagent --kube-context kind-$(KIND_CLUSTER_NAME) --wait
+	helm uninstall kagent --namespace kagent --kube-context $(KUBE_CONTEXT) --wait
+	helm uninstall kagent-crds --namespace kagent --kube-context $(KUBE_CONTEXT) --wait
 
 .PHONY: helm-publish
 helm-publish: helm-version

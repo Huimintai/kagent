@@ -28,6 +28,30 @@ export async function POST(
       backendHeaders['Authorization'] = authHeader;
     }
 
+    // Propagate per-instance GitHub tokens as X-MCP-Token-Github-<Id> headers.
+    // For disconnected instances, send an empty header so the runtime clears the session state.
+    for (const cookie of request.cookies.getAll()) {
+      const match = cookie.name.match(/^kagent_github_connected_(.+)$/);
+      if (match) {
+        const instanceId = match[1];
+        const headerSuffix = instanceId.charAt(0).toUpperCase() + instanceId.slice(1);
+        const token = request.cookies.get(`kagent_github_token_${instanceId}`)?.value;
+        backendHeaders[`X-MCP-Token-Github-${headerSuffix}`] = token || '';
+      }
+    }
+    // Also pick up token cookies without a corresponding connected cookie (belt + suspenders)
+    for (const cookie of request.cookies.getAll()) {
+      const match = cookie.name.match(/^kagent_github_token_(.+)$/);
+      if (match && cookie.value) {
+        const instanceId = match[1];
+        const headerSuffix = instanceId.charAt(0).toUpperCase() + instanceId.slice(1);
+        const headerKey = `X-MCP-Token-Github-${headerSuffix}`;
+        if (!backendHeaders[headerKey]) {
+          backendHeaders[headerKey] = cookie.value;
+        }
+      }
+    }
+
     // Propagate user identity headers
     const userIdHeader = request.headers.get('X-Auth-Request-User') || 
                          request.headers.get('X-User-Id') ||

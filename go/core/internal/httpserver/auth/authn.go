@@ -5,14 +5,16 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/kagent-dev/kagent/go/core/pkg/auth"
 	"k8s.io/apimachinery/pkg/types"
 )
 
 type SimpleSession struct {
-	P          auth.Principal
-	authHeader string
+	P               auth.Principal
+	authHeader      string
+	mcpTokenHeaders map[string]string
 }
 
 func (s *SimpleSession) Principal() auth.Principal {
@@ -32,6 +34,14 @@ func (a *UnsecureAuthenticator) Authenticate(ctx context.Context, reqHeaders htt
 	agentId := reqHeaders.Get("X-Agent-Name")
 	authHeader := reqHeaders.Get("Authorization")
 
+	// Collect X-MCP-Token-* headers for forwarding to agent pods
+	mcpTokenHeaders := make(map[string]string)
+	for key, values := range reqHeaders {
+		if strings.HasPrefix(strings.ToLower(key), "x-mcp-token-") && len(values) > 0 {
+			mcpTokenHeaders[key] = values[0]
+		}
+	}
+
 	return &SimpleSession{
 		P: auth.Principal{
 			User: auth.User{
@@ -41,7 +51,8 @@ func (a *UnsecureAuthenticator) Authenticate(ctx context.Context, reqHeaders htt
 				ID: agentId,
 			},
 		},
-		authHeader: authHeader,
+		authHeader:      authHeader,
+		mcpTokenHeaders: mcpTokenHeaders,
 	}, nil
 }
 
@@ -52,8 +63,13 @@ func (a *UnsecureAuthenticator) UpstreamAuth(r *http.Request, session auth.Sessi
 	}
 	r.Header.Set("X-User-Id", session.Principal().User.ID)
 
-	if simpleSession, ok := session.(*SimpleSession); ok && simpleSession.authHeader != "" {
-		r.Header.Set("Authorization", simpleSession.authHeader)
+	if simpleSession, ok := session.(*SimpleSession); ok {
+		if simpleSession.authHeader != "" {
+			r.Header.Set("Authorization", simpleSession.authHeader)
+		}
+		for key, value := range simpleSession.mcpTokenHeaders {
+			r.Header.Set(key, value)
+		}
 	}
 
 	return nil
