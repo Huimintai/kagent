@@ -16,6 +16,20 @@ export const MODEL_CREATION_DISABLED_MESSAGE: string =
   "Model creation is disabled. Please use the pre-defined models provided by your administrator.";
 
 /**
+ * When true, the "New MCP Server" button is disabled.
+ * Defaults to disabled when not set or empty. Set to "false" to enable.
+ */
+export const DISABLE_MCP_SERVER_CREATION: boolean =
+  process.env.NEXT_PUBLIC_DISABLE_MCP_SERVER_CREATION !== "false";
+
+/**
+ * When true, the BYO agent type option is disabled in the agent creation form.
+ * Defaults to disabled when not set or empty. Set to "false" to enable.
+ */
+export const DISABLE_BYO_AGENT_CREATION: boolean =
+  process.env.NEXT_PUBLIC_DISABLE_BYO_AGENT_CREATION !== "false";
+
+/**
  * When set, all namespace selectors are locked to this single value,
  * and only agents/resources in this namespace are visible.
  */

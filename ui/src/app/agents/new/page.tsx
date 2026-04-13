@@ -25,7 +25,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { isAgentProtected, ALLOWED_NAMESPACE } from "@/lib/appConfig";
+import { isAgentProtected, ALLOWED_NAMESPACE, DISABLE_BYO_AGENT_CREATION } from "@/lib/appConfig";
 import { LABEL_TOOL_TYPE, LABEL_CATEGORY } from "@/lib/constants";
 
 const PRIVATE_MODE_ANNOTATION = "kagent.dev/private-mode";
@@ -500,7 +500,7 @@ function AgentPageContent({ isEditMode, isViewMode, agentName, agentNamespace }:
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="Declarative">Declarative</SelectItem>
-                      <SelectItem value="BYO" disabled>BYO (coming soon)</SelectItem>
+                      <SelectItem value="BYO" disabled={DISABLE_BYO_AGENT_CREATION}>{DISABLE_BYO_AGENT_CREATION ? "BYO (disabled)" : "BYO"}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
