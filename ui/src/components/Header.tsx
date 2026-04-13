@@ -5,7 +5,7 @@ import { Button } from "./ui/button";
 import KAgentLogoWithText from "./kagent-logo-text";
 import KagentLogo from "./kagent-logo";
 import { Plus, Menu, X, ChevronDown, Brain, Server, Eye, Hammer, HomeIcon, LogOut, Ban } from "lucide-react";
-import { DISABLE_MODEL_CREATION } from "@/lib/appConfig";
+import { DISABLE_MODEL_CREATION, DISABLE_MCP_SERVER_CREATION } from "@/lib/appConfig";
 import { Identicon } from "./Identicon";
 import { ThemeToggle } from "./ThemeToggle";
 import { useUserStore } from "@/lib/userStore";
@@ -91,11 +91,18 @@ export function Header() {
                     </Link>
                   )}
                 </DropdownMenuItem>
-                <DropdownMenuItem disabled>
-                  <span className="gap-2 w-full flex items-center">
-                    <Ban className="h-4 w-4" />
-                    New MCP Server
-                  </span>
+                <DropdownMenuItem asChild={!DISABLE_MCP_SERVER_CREATION} disabled={DISABLE_MCP_SERVER_CREATION}>
+                  {DISABLE_MCP_SERVER_CREATION ? (
+                    <span className="gap-2 w-full flex items-center">
+                      <Ban className="h-4 w-4" />
+                      New MCP Server
+                    </span>
+                  ) : (
+                    <Link href="/servers/new" className="gap-2 cursor-pointer w-full">
+                      <Server className="h-4 w-4" />
+                      New MCP Server
+                    </Link>
+                  )}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -239,11 +246,18 @@ export function Header() {
                       </Link>
                     )}
                   </DropdownMenuItem>
-                  <DropdownMenuItem disabled>
-                    <span className="gap-2 w-full flex items-center">
-                      <Ban className="h-4 w-4" />
-                      New MCP Server
-                    </span>
+                  <DropdownMenuItem asChild={!DISABLE_MCP_SERVER_CREATION} disabled={DISABLE_MCP_SERVER_CREATION} onClick={DISABLE_MCP_SERVER_CREATION ? undefined : handleMobileLinkClick}>
+                    {DISABLE_MCP_SERVER_CREATION ? (
+                      <span className="gap-2 w-full flex items-center">
+                        <Ban className="h-4 w-4" />
+                        New MCP Server
+                      </span>
+                    ) : (
+                      <Link href="/servers/new" className="gap-2 cursor-pointer w-full">
+                        <Server className="h-4 w-4" />
+                        New MCP Server
+                      </Link>
+                    )}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
