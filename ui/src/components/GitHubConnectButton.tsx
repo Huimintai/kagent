@@ -19,13 +19,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, ExternalLink } from "lucide-react";
 
 interface InstanceStatus {
   id: string;
   label: string;
   connected: boolean;
   disabled?: boolean;
+  loginUrl?: string;
 }
 
 function getCookie(name: string): string | null {
@@ -43,6 +44,7 @@ const GitHubIcon = () => (
 export default function GitHubConnectButton() {
   const [instances, setInstances] = useState<InstanceStatus[]>([]);
   const [disconnecting, setDisconnecting] = useState<InstanceStatus | null>(null);
+  const [connecting, setConnecting] = useState<InstanceStatus | null>(null);
 
   useEffect(() => {
     fetch("/actions/api/auth/github/status")
@@ -68,8 +70,17 @@ export default function GitHubConnectButton() {
   const connectedInstances = instances.filter((i) => i.connected);
   const disconnectedInstances = instances.filter((i) => !i.connected);
 
-  const handleConnect = (instanceId: string) => {
-    window.location.href = `/actions/api/auth/github?instance=${encodeURIComponent(instanceId)}`;
+  const handleConnect = (inst: InstanceStatus) => {
+    if (inst.loginUrl) {
+      setConnecting(inst);
+    } else {
+      window.location.href = `/actions/api/auth/github?instance=${encodeURIComponent(inst.id)}`;
+    }
+  };
+
+  const handleProceedConnect = (inst: InstanceStatus) => {
+    setConnecting(null);
+    window.location.href = `/actions/api/auth/github?instance=${encodeURIComponent(inst.id)}`;
   };
 
   const handleDisconnect = (inst: InstanceStatus) => {
@@ -104,10 +115,13 @@ export default function GitHubConnectButton() {
       );
     }
     return (
-      <Button variant="outline" size="sm" className="text-xs gap-1.5" onClick={() => handleConnect(inst.id)}>
-        <GitHubIcon />
-        Connect GitHub
-      </Button>
+      <>
+        <Button variant="outline" size="sm" className="text-xs gap-1.5" onClick={() => handleConnect(inst)}>
+          <GitHubIcon />
+          Connect GitHub
+        </Button>
+        <PreLoginDialog inst={connecting} onCancel={() => setConnecting(null)} onConfirm={handleProceedConnect} />
+      </>
     );
   }
 
@@ -144,7 +158,7 @@ export default function GitHubConnectButton() {
           {disconnectedInstances.map((inst) => (
             <DropdownMenuItem
               key={inst.id}
-              onClick={() => !inst.disabled && handleConnect(inst.id)}
+              onClick={() => !inst.disabled && handleConnect(inst)}
               className={inst.disabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}
               disabled={inst.disabled}
             >
@@ -155,6 +169,7 @@ export default function GitHubConnectButton() {
         </DropdownMenuContent>
       </DropdownMenu>
       <DisconnectDialog inst={disconnecting} onCancel={() => setDisconnecting(null)} onConfirm={handleDisconnect} />
+      <PreLoginDialog inst={connecting} onCancel={() => setConnecting(null)} onConfirm={handleProceedConnect} />
     </>
   );
 }
@@ -184,6 +199,51 @@ function DisconnectDialog({
             className="bg-red-600 hover:bg-red-700"
           >
             Disconnect
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+function PreLoginDialog({
+  inst,
+  onCancel,
+  onConfirm,
+}: {
+  inst: InstanceStatus | null;
+  onCancel: () => void;
+  onConfirm: (inst: InstanceStatus) => void;
+}) {
+  return (
+    <AlertDialog open={!!inst} onOpenChange={(open) => { if (!open) onCancel(); }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Sign in to {inst?.label}</AlertDialogTitle>
+          <AlertDialogDescription asChild>
+            <div className="space-y-3">
+              <p>
+                To avoid being redirected away, please sign in to <strong>{inst?.label}</strong> first,
+                then come back and click <strong>Continue</strong>.
+              </p>
+              {inst?.loginUrl && (
+                <a
+                  href={inst.loginUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 underline"
+                >
+                  Open {inst.label}
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              )}
+            </div>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={() => inst && onConfirm(inst)}>
+            Continue
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
