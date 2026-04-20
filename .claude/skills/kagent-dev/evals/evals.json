@@ -108,6 +108,62 @@
         }
       ],
       "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "I need to sync the latest google-adk upstream changes into our fork. What are the highest-risk files I should watch out for, and what specific customizations might break?",
+      "expected_output": "Should identify _agent_executor.py as highest risk (subclasses A2aAgentExecutor with per-request runner lifecycle, OTel, HITL), _mcp_toolset.py as high risk (subclasses McpToolset), _remote_a2a_tool.py as significant but lower risk (custom replacement, not subclass), converters/ as medium risk (depends on both google-adk event types and a2a-python types), _session_service.py and _memory_service.py as medium risk (extend BaseSessionService/BaseMemoryService). Should note tools/ and models/ are LOW risk since they're additive. Should reference fork-python-adk.md.",
+      "assertions": [
+        {
+          "name": "identifies_agent_executor_as_high_risk",
+          "description": "Identifies _agent_executor.py as the highest-risk file for upstream sync"
+        },
+        {
+          "name": "explains_why_executor_is_risky",
+          "description": "Explains that it subclasses upstream A2aAgentExecutor and overrides key methods like _handle_request"
+        },
+        {
+          "name": "mentions_remote_a2a_tool",
+          "description": "Mentions _remote_a2a_tool.py as a custom replacement (not a subclass of upstream)"
+        },
+        {
+          "name": "mentions_converters_risk",
+          "description": "Mentions converters/ as medium risk due to dependency on both google-adk and a2a-python types"
+        },
+        {
+          "name": "distinguishes_additive_vs_override",
+          "description": "Distinguishes between additive customizations (low risk) and overrides/subclasses (high risk)"
+        }
+      ],
+      "files": []
+    },
+    {
+      "id": 6,
+      "prompt": "What parts of the Go controller layer are custom to our fork vs upstream kagent-dev/kagent? I'm trying to understand the fork boundary before working on a new feature.",
+      "expected_output": "Should describe the major custom areas: CRDs (v1alpha2 types with memory, context, skills, A2A fields), translator (CRD->K8s resources, 1360 lines, 9 providers), ADK config types (bridge CRDs<->runtime), prompt templates (Go text/template + ConfigMap), database (SQLite/PostgreSQL with sqlc), HTTP server (REST + A2A proxy, 20+ endpoints), OIDC auth, and controllers. Should note ~80% of the controller layer is custom. Should reference fork-go-controller.md.",
+      "assertions": [
+        {
+          "name": "mentions_crd_types",
+          "description": "Identifies go/api/v1alpha2/ CRD types as heavily customized with fork-specific fields"
+        },
+        {
+          "name": "mentions_translator",
+          "description": "Identifies the translator layer as core fork divergence with high sync risk"
+        },
+        {
+          "name": "mentions_database_layer",
+          "description": "Mentions the database layer (SQLite/PostgreSQL, migrations, sqlc) as custom"
+        },
+        {
+          "name": "mentions_prompt_templates",
+          "description": "Mentions prompt template system as fork-specific (Go text/template + ConfigMap includes)"
+        },
+        {
+          "name": "references_fork_reference",
+          "description": "Points to fork-go-controller.md reference for detailed breakdown"
+        }
+      ],
+      "files": []
     }
   ]
 }

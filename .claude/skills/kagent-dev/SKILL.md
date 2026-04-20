@@ -1,9 +1,78 @@
 ---
 name: kagent-dev
-description: Comprehensive guide for kagent development covering CRD modifications, E2E testing, PR workflows, local deployment, and debugging. Use this skill when working on the kagent codebase itself - adding features, fixing bugs, reviewing PRs, running tests, or troubleshooting failures. Trigger for any kagent development tasks including understanding the codebase structure, modifying CRDs, writing tests, deploying locally, or analyzing CI failures.
+description: Comprehensive guide for kagent development covering fork customizations vs upstream, CRD modifications, E2E testing, PR workflows, local deployment, and debugging. Use this skill when working on the kagent codebase itself - adding features, fixing bugs, reviewing PRs, running tests, troubleshooting failures, understanding what our fork changed relative to upstream kagent-dev/kagent and google-adk, or planning an upstream sync.
 ---
 
 # Kagent Development Guide
+
+## Fork Customization Map
+
+This fork extends upstream `kagent-dev/kagent` (Go) and `google-adk` (Python). This section maps where custom code lives so developers can avoid breaking it during upstream syncs and know where to look when extending features.
+
+### Python ADK Layer (extends google-adk)
+
+| Area | Key File(s) | What It Does | Sync Risk |
+|------|-------------|-------------|-----------|
+| Agent executor | `_agent_executor.py` | Per-request Runner lifecycle, OTel spans, HITL resume, session naming, MCP token header forwarding | HIGH |
+| Remote A2A tool | `_remote_a2a_tool.py` | Replaces upstream `AgentTool(RemoteA2aAgent)` — adds HITL propagation, live activity, user ID forwarding | LOW (custom) |
+| HITL approval | `_approval.py` | `before_tool_callback` for tool confirmation via ADK's `request_confirmation()` | LOW |
+| Converters | `converters/` | A2A <-> genai type bridge (events, parts, requests, errors) | MEDIUM |
+| SAP AI Core | `models/_sap_ai_core.py` | Custom LLM provider — OAuth, orchestration templates | LOW |
+| Bedrock | `models/_bedrock.py` | AWS Bedrock via Converse API | LOW |
+| Custom tools | `tools/` | ask_user, memory (save/load/prefetch), mcp_oauth, set_mcp_token, skills | LOW |
+| Session service | `_session_service.py` | HTTP-based session persistence via controller API | MEDIUM |
+| Memory service | `_memory_service.py` | Multi-provider embeddings, vector search, TTL, LLM summarization | MEDIUM |
+| MCP toolset | `_mcp_toolset.py` | Enhanced error handling (anyio cancel scope) | HIGH |
+
+See `references/fork-python-adk.md` for detailed file-by-file breakdown with override points and sync checklists.
+
+### Go Controller Layer (~80% custom)
+
+| Area | Key File(s) | What It Does | Sync Risk |
+|------|-------------|-------------|-----------|
+| CRDs | `go/api/v1alpha2/` | Agent, ModelConfig, RemoteMCPServer — memory, context, skills, A2A, HITL fields | HIGH |
+| ADK config types | `go/api/adk/types.go` | Bridge CRDs <-> Python/Go runtime (config.json) | HIGH |
+| Translator | `translator/agent/adk_api_translator.go` | CRD -> Deployment, Service, Secret, SA (1,360 lines, 9 providers) | HIGH |
+| Deployments | `translator/agent/deployments.go` | Runtime-specific image selection, resource defaults | HIGH |
+| Prompt templates | `translator/agent/template.go` | Go text/template + ConfigMap `include()` | MEDIUM |
+| Database | `core/internal/database/` | SQLite/PostgreSQL, sqlc, memory TTL, session source filtering | HIGH |
+| HTTP server | `core/internal/httpserver/` | REST API + A2A proxy + MCP handler, 20+ endpoints | MEDIUM |
+| Auth | `httpserver/auth/` | OIDC proxy authentication (ProxyAuthenticator) | LOW |
+| Controllers | `core/internal/controller/` | Agent, ModelConfig, RemoteMCPServer reconciliation | HIGH |
+| Helm | `helm/` | CRD chart + main app chart | MEDIUM |
+
+See `references/fork-go-controller.md` for detailed area-by-area breakdown with merge strategies.
+
+### Major Custom Features (not in upstream)
+
+1. Semantic memory system (pgvector, save/load/prefetch tools, TTL pruning)
+2. Enterprise OIDC auth (proxy model, ProxyAuthenticator)
+3. Prompt templates (Go text/template + ConfigMap includes)
+4. HITL protocol extensions (nested subagent approval, batch decisions, ask-user tool)
+5. SAP AI Core + AWS Bedrock LLM providers
+6. Per-request Runner lifecycle (MCP toolset cleanup)
+7. MCP OAuth token management (per-user, per-tool)
+8. Agent skills system (OCI + Git references with auth)
+9. Custom A2A subagent tool (KAgentRemoteA2ATool with live activity viewing)
+10. OpenTelemetry span tracking (user_id, task_id, session_id, invocation_id)
+
+### Design Proposals
+
+| EP | Feature | Architecture Doc |
+|----|---------|-----------------|
+| EP-1256 | Semantic memory (pgvector, vector migrations) | `design/EP-1256-memory.md` |
+| EP-476 | OIDC authentication (proxy model, Casbin RBAC) | `docs/OIDC_PROXY_AUTH_ARCHITECTURE.md` |
+| EP-685 | First-class KMCP support (v1alpha1 -> v1alpha2) | `design/EP-685-kmcp.md` |
+
+### Upstream Sync Safety Checklist
+
+- **Before syncing google-adk:** check `_agent_executor.py` (HIGH — subclasses upstream) and converter callback signatures
+- **Before syncing kagent-dev/kagent Go:** check CRD types, translator, and database migrations for conflicts
+- **After sync:** `make controller-manifests` + `UPDATE_GOLDEN=true make -C go test` + `make -C go e2e`
+- **Dual-maintenance files:** `go/api/adk/types.go` <-> `python/.../adk/types.py` must stay in sync
+- **If your PR adds a fork-specific feature:** update `references/fork-python-adk.md` or `references/fork-go-controller.md`
+
+---
 
 ## Quick Reference
 
@@ -278,6 +347,23 @@ make helm-install-provider # Redeploy without rebuilding images (helm changes on
 make helm-install          # Full rebuild + redeploy
 ```
 
+### Kind Deployment (Detailed)
+
+For comprehensive Kind deployment guide including proxy setup, image loading workarounds,
+and troubleshooting, see the **kagent-ci-kind** skill (`/kagent-ci-kind`).
+
+**Key learnings from production:**
+- Use `imagePullPolicy=IfNotPresent` in Kind to avoid registry proxy 502 errors
+- Use `kind load docker-image` when the local registry has OCI index format issues
+- Configure containerd proxy on the Kind node if behind corporate firewall:
+  `docker exec kagent-control-plane` + systemd containerd.service.d/proxy.conf
+- External images (pgvector, kmcp, tools, querydoc, grafana-mcp) need internet — pre-pull or configure proxy
+- Controller startup probe may fail until PostgreSQL is ready — this is expected behavior
+
+**Deployment bundles:**
+- Kind bundle: `~/kagent-dev/bundles/kind/deploy.sh` — one-shot Kind deployment
+- Cloud bundle: `~/kagent-dev/bundles/cloud/` — haas production backup for cluster restoration
+
 ### Debugging
 
 ```bash
@@ -348,8 +434,17 @@ Don't use Go template syntax (`{{ }}`) in doc comments — Helm will try to pars
 
 ## Additional Resources
 
+### Fork Customization References
+- `references/fork-python-adk.md` - Python ADK customizations vs google-adk upstream (sync risk, override points)
+- `references/fork-go-controller.md` - Go controller customizations vs kagent-dev/kagent upstream (merge strategies)
+
+### Development Methodology References
 - `references/crd-workflow-detailed.md` - Field type examples, complex validation, pointer vs value types
 - `references/translator-guide.md` - Translator patterns, `deployments.go` and `adk_api_translator.go`
 - `references/e2e-debugging.md` - Comprehensive E2E debugging, local reproduction
 - `references/ci-failures.md` - CI failure patterns and fixes
 - `references/database-migrations.md` - Migration authoring rules, sqlc workflow, multi-instance safety, expand/contract pattern
+
+### Architecture Documentation
+- `docs/architecture/` - System architecture (a2a-subagents, HITL, controller-reconciliation, prompt-templates, data-flow, CRDs)
+- `docs/OIDC_PROXY_AUTH_ARCHITECTURE.md` - OIDC proxy authentication design
