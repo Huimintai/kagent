@@ -685,6 +685,55 @@ func (a *adkApiTranslator) translateModel(ctx context.Context, namespace, modelC
 		bedrock.APIKeyPassthrough = model.Spec.APIKeyPassthrough
 
 		return bedrock, modelDeploymentData, secretHashBytes, nil
+	case v1alpha2.ModelProviderSAPAICore:
+		if model.Spec.SAPAICore == nil {
+			return nil, nil, nil, fmt.Errorf("sapAICore model config is required")
+		}
+
+		if !model.Spec.APIKeyPassthrough && model.Spec.APIKeySecret != "" {
+			secret := &corev1.Secret{}
+			if err := a.kube.Get(ctx, types.NamespacedName{Namespace: namespace, Name: model.Spec.APIKeySecret}, secret); err != nil {
+				return nil, nil, nil, fmt.Errorf("failed to get SAP AI Core credentials secret: %w", err)
+			}
+
+			modelDeploymentData.EnvVars = append(modelDeploymentData.EnvVars, corev1.EnvVar{
+				Name: env.SAPAICoreClientID.Name(),
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: model.Spec.APIKeySecret,
+						},
+						Key: "client_id",
+					},
+				},
+			})
+			modelDeploymentData.EnvVars = append(modelDeploymentData.EnvVars, corev1.EnvVar{
+				Name: env.SAPAICoreClientSecret.Name(),
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: model.Spec.APIKeySecret,
+						},
+						Key: "client_secret",
+					},
+				},
+			})
+		}
+
+		sapAICore := &adk.SAPAICore{
+			BaseModel: adk.BaseModel{
+				Model:   model.Spec.Model,
+				Headers: model.Spec.DefaultHeaders,
+			},
+			BaseUrl:       model.Spec.SAPAICore.BaseURL,
+			ResourceGroup: model.Spec.SAPAICore.ResourceGroup,
+			AuthUrl:       model.Spec.SAPAICore.AuthURL,
+		}
+
+		populateTLSFields(&sapAICore.BaseModel, model.Spec.TLS)
+		sapAICore.APIKeyPassthrough = model.Spec.APIKeyPassthrough
+
+		return sapAICore, modelDeploymentData, secretHashBytes, nil
 	default:
 		return nil, nil, nil, fmt.Errorf("unsupported model provider: %s", model.Spec.Provider)
 	}
@@ -1104,11 +1153,12 @@ func validateSubPath(p string) error {
 
 // skillsInitData holds the template data for the unified skills-init script.
 type skillsInitData struct {
-	AuthMountPath string        // "/git-auth" or "" (for git auth)
-	GitRefs       []gitRefData  // git repos to clone
-	OCIRefs       []ociRefData  // OCI images to pull
-	InsecureOCI   bool          // --insecure flag for krane
-	SSHHosts      []sshHostData // extra hosts to add to known_hosts via ssh-keyscan
+	AuthMountPath    string        // "/git-auth" or "" (for git auth)
+	OCIAuthMountPath string        // "/oci-auth" or "" (for OCI registry auth)
+	GitRefs          []gitRefData  // git repos to clone
+	OCIRefs          []ociRefData  // OCI images to pull
+	InsecureOCI      bool          // --insecure flag for krane
+	SSHHosts         []sshHostData // extra hosts to add to known_hosts via ssh-keyscan
 }
 
 // sshHostData holds the host and optional port for an SSH known_hosts entry.
@@ -1170,10 +1220,15 @@ func prepareSkillsInitData(
 	gitRefs []v1alpha2.GitRepo,
 	authSecretRef *corev1.LocalObjectReference,
 	ociRefs []string,
+	hasOCIAuth bool,
 	insecureOCI bool,
 ) (skillsInitData, error) {
 	data := skillsInitData{
 		InsecureOCI: insecureOCI,
+	}
+
+	if hasOCIAuth {
+		data.OCIAuthMountPath = "/oci-auth"
 	}
 
 	if authSecretRef != nil {
@@ -1252,12 +1307,22 @@ func buildSkillsInitContainer(
 	gitRefs []v1alpha2.GitRepo,
 	authSecretRef *corev1.LocalObjectReference,
 	ociRefs []string,
+	ociAuthSecretRef *corev1.LocalObjectReference,
 	insecureOCI bool,
 	securityContext *corev1.SecurityContext,
-	env []corev1.EnvVar,
+	initEnv []corev1.EnvVar,
 	resources corev1.ResourceRequirements,
 ) (container corev1.Container, volumes []corev1.Volume, err error) {
-	data, err := prepareSkillsInitData(gitRefs, authSecretRef, ociRefs, insecureOCI)
+	// Resolve OCI auth secret: explicit per-agent ref takes precedence,
+	// then fall back to the global default from KAGENT_DEFAULT_OCI_AUTH_SECRET.
+	resolvedOCIAuth := ociAuthSecretRef
+	if resolvedOCIAuth == nil {
+		if defaultName := env.KagentDefaultOCIAuthSecret.Get(); defaultName != "" {
+			resolvedOCIAuth = &corev1.LocalObjectReference{Name: defaultName}
+		}
+	}
+
+	data, err := prepareSkillsInitData(gitRefs, authSecretRef, ociRefs, resolvedOCIAuth != nil, insecureOCI)
 	if err != nil {
 		return corev1.Container{}, nil, err
 	}
@@ -1291,13 +1356,30 @@ func buildSkillsInitContainer(
 		})
 	}
 
+	// Mount OCI auth secret if resolved (per-agent or global default)
+	if resolvedOCIAuth != nil {
+		volumes = append(volumes, corev1.Volume{
+			Name: "oci-auth",
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: resolvedOCIAuth.Name,
+				},
+			},
+		})
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      "oci-auth",
+			MountPath: "/oci-auth",
+			ReadOnly:  true,
+		})
+	}
+
 	container = corev1.Container{
 		Name:            "skills-init",
 		Image:           DefaultSkillsInitImageConfig.Image(),
 		Command:         []string{"/bin/sh", "-c", script},
 		VolumeMounts:    volumeMounts,
 		SecurityContext: initSecCtx,
-		Env:             env,
+		Env:             initEnv,
 		Resources:       resources,
 	}
 

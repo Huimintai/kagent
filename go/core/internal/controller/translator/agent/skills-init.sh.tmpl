@@ -1,4 +1,9 @@
 set -e
+{{- if .OCIAuthMountPath }}
+mkdir -p /tmp/docker-config
+cp {{ .OCIAuthMountPath }}/.dockerconfigjson /tmp/docker-config/config.json
+export DOCKER_CONFIG=/tmp/docker-config
+{{- end }}
 {{- if .AuthMountPath }}
 _auth_mount="$(cat <<'ENDVAL'
 {{ .AuthMountPath }}

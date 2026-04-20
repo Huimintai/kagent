@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func Test_ociSkillName(t *testing.T) {
@@ -246,7 +247,7 @@ func Test_prepareSkillsInitData_duplicateNames(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := prepareSkillsInitData(tt.gitRefs, nil, tt.ociRefs, false)
+			_, err := prepareSkillsInitData(tt.gitRefs, nil, tt.ociRefs, false, false)
 			if tt.wantErr != "" {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.wantErr)
@@ -262,7 +263,7 @@ func Test_prepareSkillsInitData_pathTraversal(t *testing.T) {
 		[]v1alpha2.GitRepo{
 			{URL: "https://github.com/org/repo", Ref: "main", Path: "../escape"},
 		},
-		nil, nil, false,
+		nil, nil, false, false,
 	)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "must not contain '..'")
@@ -273,7 +274,7 @@ func Test_prepareSkillsInitData_absolutePath(t *testing.T) {
 		[]v1alpha2.GitRepo{
 			{URL: "https://github.com/org/repo", Ref: "main", Path: "/etc/passwd"},
 		},
-		nil, nil, false,
+		nil, nil, false, false,
 	)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "must be relative")
@@ -283,7 +284,7 @@ func Test_prepareSkillsInitData_authMountPath(t *testing.T) {
 	data, err := prepareSkillsInitData(
 		[]v1alpha2.GitRepo{{URL: "https://github.com/org/repo", Ref: "main"}},
 		&corev1.LocalObjectReference{Name: "my-secret"},
-		nil, false,
+		nil, false, false,
 	)
 	require.NoError(t, err)
 	assert.Equal(t, "/git-auth", data.AuthMountPath)
@@ -336,4 +337,190 @@ func Test_prepareSkillsInitData_noAuthSkipsSSHHosts(t *testing.T) {
 	)
 	require.NoError(t, err)
 	assert.Empty(t, data.SSHHosts, "SSH hosts should not be collected when authSecretRef is nil")
+}
+
+func Test_prepareSkillsInitData_ociAuthMountPath(t *testing.T) {
+	data, err := prepareSkillsInitData(
+		nil, nil,
+		[]string{"ghcr.io/org/skill:v1"},
+		true, false,
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "/oci-auth", data.OCIAuthMountPath)
+}
+
+func Test_prepareSkillsInitData_noOciAuth(t *testing.T) {
+	data, err := prepareSkillsInitData(
+		nil, nil,
+		[]string{"ghcr.io/org/skill:v1"},
+		false, false,
+	)
+	require.NoError(t, err)
+	assert.Empty(t, data.OCIAuthMountPath)
+}
+
+func Test_buildSkillsRuntime_inlineOnlyNoInitContainer(t *testing.T) {
+	agent := &v1alpha2.Agent{
+		ObjectMeta: metav1.ObjectMeta{Name: "inline-only", Namespace: "test"},
+		Spec: v1alpha2.AgentSpec{
+			Type: v1alpha2.AgentType_Declarative,
+			Declarative: &v1alpha2.DeclarativeAgentSpec{
+				InlineSkills: []v1alpha2.InlineSkill{
+					{Name: "data-analysis", Description: "Analyze data", Content: "# Analysis"},
+					{Name: "code-review", Description: "Review code", Content: "# Review"},
+				},
+			},
+		},
+	}
+
+	mctx := manifestContext{
+		agent:          agent,
+		deployment:     &resolvedDeployment{},
+		selectorLabels: map[string]string{"app": "test"},
+	}
+
+	var env []corev1.EnvVar
+	var volumes []corev1.Volume
+	var volumeMounts []corev1.VolumeMount
+	needCodeExec := false
+
+	initContainers, err := buildSkillsRuntime(mctx, &env, &volumes, &volumeMounts, &needCodeExec)
+	require.NoError(t, err)
+
+	// Inline-only: no init containers
+	assert.Empty(t, initContainers, "inline-only skills must not produce init containers")
+
+	// Must set up the skills folder env var
+	assert.True(t, needCodeExec)
+	assert.Len(t, env, 1)
+	assert.Equal(t, "/skills", env[0].Value)
+
+	// Must have emptyDir + configMap volumes
+	assert.Len(t, volumes, 2)
+	assert.Equal(t, "kagent-skills", volumes[0].Name)
+	assert.NotNil(t, volumes[0].EmptyDir)
+	assert.Equal(t, "inline-skills", volumes[1].Name)
+	assert.NotNil(t, volumes[1].ConfigMap)
+
+	// Must have emptyDir mount + 2 subPath mounts (one per inline skill)
+	assert.Len(t, volumeMounts, 3)
+	assert.Equal(t, "/skills", volumeMounts[0].MountPath)
+	assert.Equal(t, "/skills/data-analysis/SKILL.md", volumeMounts[1].MountPath)
+	assert.Equal(t, "/skills/code-review/SKILL.md", volumeMounts[2].MountPath)
+}
+
+func Test_buildSkillsRuntime_mixedProducesInitContainer(t *testing.T) {
+	agent := &v1alpha2.Agent{
+		ObjectMeta: metav1.ObjectMeta{Name: "mixed", Namespace: "test"},
+		Spec: v1alpha2.AgentSpec{
+			Type: v1alpha2.AgentType_Declarative,
+			Declarative: &v1alpha2.DeclarativeAgentSpec{
+				InlineSkills: []v1alpha2.InlineSkill{
+					{Name: "data-analysis", Description: "Analyze data", Content: "# Analysis"},
+				},
+			},
+			Skills: &v1alpha2.SkillForAgent{
+				Refs: []string{"ghcr.io/org/kubectl:latest"},
+			},
+		},
+	}
+
+	mctx := manifestContext{
+		agent:          agent,
+		deployment:     &resolvedDeployment{},
+		selectorLabels: map[string]string{"app": "test"},
+	}
+
+	var env []corev1.EnvVar
+	var volumes []corev1.Volume
+	var volumeMounts []corev1.VolumeMount
+	needCodeExec := false
+
+	initContainers, err := buildSkillsRuntime(mctx, &env, &volumes, &volumeMounts, &needCodeExec)
+	require.NoError(t, err)
+
+	// Mixed: must produce an init container for OCI ref
+	assert.Len(t, initContainers, 1, "mixed skills must produce an init container")
+	assert.Equal(t, "skills-init", initContainers[0].Name)
+}
+
+func Test_buildSkillsRuntime_inlineOCINameCollision(t *testing.T) {
+	agent := &v1alpha2.Agent{
+		ObjectMeta: metav1.ObjectMeta{Name: "collision", Namespace: "test"},
+		Spec: v1alpha2.AgentSpec{
+			Type: v1alpha2.AgentType_Declarative,
+			Declarative: &v1alpha2.DeclarativeAgentSpec{
+				InlineSkills: []v1alpha2.InlineSkill{
+					{Name: "kubectl", Description: "Inline kubectl", Content: "# K8s"},
+				},
+			},
+			Skills: &v1alpha2.SkillForAgent{
+				Refs: []string{"ghcr.io/org/kubectl:latest"},
+			},
+		},
+	}
+
+	mctx := manifestContext{
+		agent:          agent,
+		deployment:     &resolvedDeployment{},
+		selectorLabels: map[string]string{"app": "test"},
+	}
+
+	var env []corev1.EnvVar
+	var volumes []corev1.Volume
+	var volumeMounts []corev1.VolumeMount
+	needCodeExec := false
+
+	_, err := buildSkillsRuntime(mctx, &env, &volumes, &volumeMounts, &needCodeExec)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "conflicts with OCI skill name")
+}
+
+func Test_buildInlineSkillsConfigMap(t *testing.T) {
+	agent := &v1alpha2.Agent{
+		ObjectMeta: metav1.ObjectMeta{Name: "my-agent", Namespace: "test"},
+		Spec: v1alpha2.AgentSpec{
+			Type: v1alpha2.AgentType_Declarative,
+			Declarative: &v1alpha2.DeclarativeAgentSpec{
+				InlineSkills: []v1alpha2.InlineSkill{
+					{Name: "analysis", Description: "Data analysis", Content: "# Analyze data\n"},
+				},
+			},
+		},
+	}
+
+	mctx := manifestContext{
+		agent:          agent,
+		deployment:     &resolvedDeployment{},
+		selectorLabels: map[string]string{"app": "test"},
+	}
+
+	cm := buildInlineSkillsConfigMap(mctx)
+	require.NotNil(t, cm)
+	assert.Equal(t, "my-agent-inline-skills", cm.Name)
+	assert.Contains(t, cm.Data, "analysis")
+	assert.Contains(t, cm.Data["analysis"], "name: analysis")
+	assert.Contains(t, cm.Data["analysis"], "# Analyze data")
+}
+
+func Test_buildInlineSkillsConfigMap_nilWhenNoInlineSkills(t *testing.T) {
+	agent := &v1alpha2.Agent{
+		ObjectMeta: metav1.ObjectMeta{Name: "no-inline", Namespace: "test"},
+		Spec: v1alpha2.AgentSpec{
+			Type:        v1alpha2.AgentType_Declarative,
+			Declarative: &v1alpha2.DeclarativeAgentSpec{},
+			Skills: &v1alpha2.SkillForAgent{
+				Refs: []string{"ghcr.io/org/skill:v1"},
+			},
+		},
+	}
+
+	mctx := manifestContext{
+		agent:          agent,
+		deployment:     &resolvedDeployment{},
+		selectorLabels: map[string]string{"app": "test"},
+	}
+
+	cm := buildInlineSkillsConfigMap(mctx)
+	assert.Nil(t, cm, "no inline skills should produce nil ConfigMap")
 }
