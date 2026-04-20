@@ -94,6 +94,7 @@ export interface ModelConfigSpec {
   geminiVertexAI?: GeminiVertexAIConfig;
   anthropicVertexAI?: AnthropicVertexAIConfig;
   bedrock?: BedrockConfig;
+  sapAICore?: SAPAICoreConfig;
 }
 
 export interface ModelConfig {
@@ -149,10 +150,17 @@ export interface ConfiguredModelProviderModelsResponse {
   models: string[];
 }
 
+export interface SAPAICoreConfig {
+  baseUrl: string;
+  resourceGroup?: string;
+  authUrl?: string;
+}
+
 export interface CreateModelConfigRequest {
   ref: string;
   apiKey?: string;
   spec: ModelConfigSpec;
+}
 }
 
 export interface UpdateModelConfigPayload {
@@ -218,6 +226,8 @@ export interface ToolsResponse {
 export interface ResourceMetadata {
   name: string;
   namespace?: string;
+  annotations?: Record<string, string>;
+  labels?: Record<string, string>;
 }
 
 export type ToolProviderType = "McpServer" | "Agent"
@@ -253,6 +263,12 @@ export interface SandboxAgent {
   kind?: string;
   metadata: ResourceMetadata;
   spec: AgentSpec;
+}
+
+export interface InlineSkill {
+  name: string;
+  description: string;
+  content: string;
 }
 
 export interface AgentSpec {
@@ -307,6 +323,8 @@ export interface DeclarativeAgentSpec {
   memory?: MemorySpec;
   /** When set, systemMessage is rendered as a Go text/template with includes and variables. */
   promptTemplate?: PromptTemplateSpec;
+  /** Inline prompt-based skills (no container required). */
+  inlineSkills?: InlineSkill[];
 }
 
 export interface ContextConfig {
@@ -386,6 +404,8 @@ export interface Agent {
 export interface AgentResponse {
   id: number;
   agent: Agent;
+  user_id?: string;
+  private_mode?: boolean;
   model: string;
   modelProvider: string;
   modelConfigRef: string;

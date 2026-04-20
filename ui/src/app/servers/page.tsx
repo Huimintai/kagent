@@ -11,40 +11,39 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import Link from "next/link";
 import { toast } from "sonner";
 import { useAgents } from "@/components/AgentsProvider";
+import { useAppConfig } from "@/lib/configStore";
 
 export default function ServersPage() {
   const { refreshTools } = useAgents();
+  const { allowedNamespace, disableMcpServerCreation } = useAppConfig();
 
-  // State for servers and tools
   const [servers, setServers] = useState<ToolServerResponse[]>([]);
   const [toolServerTypes, setToolServerTypes] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [expandedServers, setExpandedServers] = useState<Set<string>>(new Set());
 
-  // Dialog states
   const [showAddServer, setShowAddServer] = useState(false);
   const [showConfirmDelete, setShowConfirmDelete] = useState<string | null>(null);
   const [openDropdownMenu, setOpenDropdownMenu] = useState<string | null>(null);
 
-  // Fetch data on component mount
   useEffect(() => {
     fetchServers();
     fetchToolServerTypes();
   }, []);
 
-  // Fetch servers
   const fetchServers = async () => {
     try {
       setIsLoading(true);
-
       const serversResponse = await getServers();
       if (!serversResponse.error && serversResponse.data) {
-        const sortedServers = [...serversResponse.data].sort((a, b) => {
+        let filtered = serversResponse.data;
+        if (allowedNamespace) {
+          filtered = filtered.filter((s) => s.ref?.startsWith(allowedNamespace + "/"));
+        }
+        const sortedServers = [...filtered].sort((a, b) => {
           return (a.ref || '').localeCompare(b.ref || '');
         });
         setServers(sortedServers);
-        
-        // Start with all servers collapsed
         setExpandedServers(new Set());
       } else {
         console.error("Failed to fetch servers:", serversResponse);
@@ -57,11 +56,10 @@ export default function ServersPage() {
       setIsLoading(false);
     }
   };
-  
+
   const fetchToolServerTypes = async () => {
     try {
       setIsLoading(true);
-
       const toolServerTypes = await getToolServerTypes();
       if (!toolServerTypes.error && toolServerTypes.data) {
         setToolServerTypes(toolServerTypes.data);
@@ -75,15 +73,12 @@ export default function ServersPage() {
     } finally {
       setIsLoading(false);
     }
-  }
+  };
 
-  // Handle server deletion
   const handleDeleteServer = async (serverName: string) => {
     try {
       setIsLoading(true);
-
       const response = await deleteServer(serverName);
-
       if (!response.error) {
         toast.success("Server deleted successfully");
         await fetchServers();
@@ -100,17 +95,13 @@ export default function ServersPage() {
     }
   };
 
-  // Handle adding a new server
   const handleAddServer = async (serverRequest: ToolServerCreateRequest) => {
     try {
       setIsLoading(true);
-
       const response = await createServer(serverRequest);
-
       if (response.error) {
         throw new Error(response.error || "Failed to add server");
       }
-
       toast.success("Server added successfully");
       setShowAddServer(false);
       await fetchServers();
@@ -119,7 +110,7 @@ export default function ServersPage() {
       console.error("Error adding server:", error);
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
       toast.error(`Failed to add server: ${errorMessage}`);
-      throw error; // Re-throw to be caught by the dialog
+      throw error;
     } finally {
       setIsLoading(false);
     }
@@ -146,7 +137,7 @@ export default function ServersPage() {
             View Tools →
           </Link>
         </div>
-        {servers.length > 0 && (
+        {!disableMcpServerCreation && servers.length > 0 && (
           <Button onClick={() => setShowAddServer(true)} variant="default">
             <Plus className="h-4 w-4 mr-2" />
             Add MCP Server
@@ -168,63 +159,57 @@ export default function ServersPage() {
 
             return (
               <div key={server.ref} className="border rounded-md overflow-hidden">
-                {/* Server Header */}
                 <div className="bg-secondary/10 p-4">
                   <div className="flex items-center justify-between">
-                    <div 
-                      className="flex items-center gap-3 cursor-pointer" 
+                    <div
+                      className="flex items-center gap-3 cursor-pointer"
                       onClick={() => toggleServer(serverName)}
                     >
                       {isExpanded ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
-                      <div className="flex items-center gap-2">
-                        <div>
-                          <div className="font-medium">{server.ref}</div>
-                          <div className="text-xs text-muted-foreground flex items-center gap-2">
-                            <span className="font-mono">{server.ref}</span>
-                          </div>
+                      <div>
+                        <div className="font-medium">{server.ref}</div>
+                        <div className="text-xs text-muted-foreground flex items-center gap-2">
+                          <span className="font-mono">{server.ref}</span>
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <DropdownMenu 
-                        open={openDropdownMenu === serverName} 
-                        onOpenChange={(isOpen) => setOpenDropdownMenu(isOpen ? serverName : null)}
-                      >
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                           <DropdownMenuItem 
-                             className="text-red-600 focus:text-red-700 focus:bg-red-50"
-                             onSelect={(e) => {
-                               e.preventDefault();
-                               setOpenDropdownMenu(null);
-                               setShowConfirmDelete(serverName);
-                             }}
-                           >
-                             <Trash2 className="h-4 w-4 mr-2" />
-                             Remove MCP Server
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
+                    {!disableMcpServerCreation && (
+                      <div className="flex items-center gap-2">
+                        <DropdownMenu
+                          open={openDropdownMenu === serverName}
+                          onOpenChange={(isOpen) => setOpenDropdownMenu(isOpen ? serverName : null)}
+                        >
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              className="text-red-600 focus:text-red-700 focus:bg-red-50"
+                              onSelect={(e) => {
+                                e.preventDefault();
+                                setOpenDropdownMenu(null);
+                                setShowConfirmDelete(serverName);
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Remove MCP Server
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                {/* Server Tools List */}
                 {isExpanded && (
                   <div className="p-4">
                     {server.discoveredTools && server.discoveredTools.length > 0 ? (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         {server.discoveredTools
-                          .sort((a, b) => {
-                            const aName = a.name || "";
-                            const bName = b.name || "";
-                            return aName.localeCompare(bName);
-                          })
+                          .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
                           .map((tool) => (
                             <div key={tool.name} className="p-3 border rounded-md hover:bg-secondary/5 transition-colors">
                               <div className="flex items-start gap-2">
@@ -251,22 +236,22 @@ export default function ServersPage() {
           <Server className="h-12 w-12 text-muted-foreground mb-4 opacity-20" />
           <h3 className="font-medium text-lg">No MCP servers connected</h3>
           <p className="text-muted-foreground mt-1 mb-4">Add an MCP server to discover and use tools.</p>
-          <Button onClick={() => setShowAddServer(true)} variant="default">
-            <Plus className="h-4 w-4 mr-2" />
-            Add MCP Server
-          </Button>
+          {!disableMcpServerCreation && (
+            <Button onClick={() => setShowAddServer(true)} variant="default">
+              <Plus className="h-4 w-4 mr-2" />
+              Add MCP Server
+            </Button>
+          )}
         </div>
       )}
 
-      {/* Add server dialog */}
-      <AddServerDialog 
-        open={showAddServer} 
+      <AddServerDialog
+        open={showAddServer}
         supportedToolServerTypes={toolServerTypes}
-        onOpenChange={setShowAddServer} 
+        onOpenChange={setShowAddServer}
         onAddServer={handleAddServer}
       />
 
-      {/* Confirm delete dialog */}
       <ConfirmDialog
         open={showConfirmDelete !== null}
         onOpenChange={(open) => {

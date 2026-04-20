@@ -1,5 +1,67 @@
 import { getBackendUrl } from "@/lib/utils";
 import { getAuthHeadersFromContext } from "@/lib/auth";
+import { fetchOidcUser } from "@/lib/oidcUser";
+
+const DEFAULT_USER_ID = "admin@kagent.dev";
+const USER_ID_KEY = "kagent_user_id";
+
+const USER_ID_HEADER_CANDIDATES = [
+  "x-user-id",
+  "x-auth-request-email",
+  "x-forwarded-email",
+  "x-forwarded-user",
+  "x-auth-request-user",
+];
+
+function getUserIdFromHeaders(reqHeaders: Headers): string | null {
+  for (const headerName of USER_ID_HEADER_CANDIDATES) {
+    const headerValue = reqHeaders.get(headerName)?.trim();
+    if (headerValue) {
+      return headerValue;
+    }
+  }
+
+  return null;
+}
+
+export async function getCurrentUserId() {
+  // Server-side path (server actions): read identity directly from request headers.
+  if (typeof window === "undefined") {
+    try {
+      const { headers } = await import("next/headers");
+      const reqHeaders = await headers();
+      const headerUserId = getUserIdFromHeaders(reqHeaders);
+
+      if (headerUserId) {
+        return headerUserId;
+      }
+    } catch {
+      // Ignore and continue to fallback behavior below.
+    }
+  }
+
+  // Also check user id cached by localStorage.
+  if (typeof window !== "undefined") {
+    const storedUserId = localStorage.getItem(USER_ID_KEY);
+    if (storedUserId && storedUserId !== DEFAULT_USER_ID) {
+      return storedUserId;
+    }
+  }
+
+  try {
+    const user = await fetchOidcUser();
+    if (user?.email) {
+      if (typeof window !== "undefined") {
+        localStorage.setItem(USER_ID_KEY, user.email);
+      }
+      return user.email;
+    }
+  } catch {
+    // Ignore and continue to fallback behavior below.
+  }
+
+  return DEFAULT_USER_ID;
+}
 
 type ApiOptions = RequestInit & {
   method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";

@@ -235,7 +235,11 @@ export function AgentDetailsSidebar({ selectedAgentName, currentAgent, allTools 
 
   return (
     <>
-      <Sidebar side={"right"} collapsible="offcanvas">
+      <Sidebar
+        side={"right"}
+        collapsible="offcanvas"
+        className="md:top-[101px] md:h-[calc(100svh-101px)]"
+      >
         <SidebarHeader>Agent Details</SidebarHeader>
         <SidebarContent>
           <ScrollArea>
@@ -265,57 +269,71 @@ export function AgentDetailsSidebar({ selectedAgentName, currentAgent, allTools 
               </SidebarGroup>
             )}
 
-            {isDeclarativeLikeAgent && selectedTeam?.agent.spec?.skills?.refs && selectedTeam.agent.spec.skills.refs.length > 0 && (
+            {isDeclarativeLikeAgent && selectedTeam?.agent.spec?.declarative?.inlineSkills && selectedTeam.agent.spec.declarative.inlineSkills.length > 0 && (
               <SidebarGroup className="group-data-[collapsible=icon]:hidden">
                 <div className="flex items-center justify-between px-2 mb-2">
                   <SidebarGroupLabel className="mb-0">Skills</SidebarGroupLabel>
+                  <Badge variant="secondary" className="h-5">
+                    {selectedTeam.agent.spec.declarative.inlineSkills.length}
+                  </Badge>
+                </div>
+                <SidebarMenu>
+                  <TooltipProvider>
+                    {selectedTeam.agent.spec.declarative.inlineSkills.map((skill, index) => (
+                      <SidebarMenuItem key={index}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <SidebarMenuButton className="w-full h-auto py-2">
+                              <div className="flex flex-col items-start w-full min-w-0 gap-0.5">
+                                <span className="truncate text-sm font-medium leading-tight">{skill.name}</span>
+                                <span className="truncate w-full text-xs text-muted-foreground leading-tight">
+                                  {skill.description}
+                                </span>
+                              </div>
+                            </SidebarMenuButton>
+                          </TooltipTrigger>
+                          <TooltipContent side="left">
+                            <div className="max-w-xs">
+                              <p className="font-medium">{skill.name}</p>
+                              {skill.description && <p className="text-xs mt-1">{skill.description}</p>}
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
+                      </SidebarMenuItem>
+                    ))}
+                  </TooltipProvider>
+                </SidebarMenu>
+              </SidebarGroup>
+            )}
+
+            {isDeclarativeLikeAgent && selectedTeam?.agent.spec?.skills?.refs && selectedTeam.agent.spec.skills.refs.length > 0 && (
+              <SidebarGroup className="group-data-[collapsible=icon]:hidden">
+                <div className="flex items-center justify-between px-2 mb-2">
+                  <SidebarGroupLabel className="mb-0">CLI Containers</SidebarGroupLabel>
                   <Badge variant="secondary" className="h-5">
                     {selectedTeam.agent.spec.skills.refs.length}
                   </Badge>
                 </div>
                 <SidebarMenu>
                   <TooltipProvider>
-                    {selectedTeam.agent.spec.skills.refs.map((skillRef, index) => {
-                      // Parse OCI image reference: [registry/]repository[:tag][@digest]
-                      // Groups: (1) registry, (2) repository, (3) tag, (4) digest
-                      const refMatch = skillRef.match(
-                        /^(?:((?:[a-zA-Z0-9-]+\.)+[a-zA-Z0-9-]+(?::\d+)?|localhost(?::\d+)?|[a-zA-Z0-9-]+:\d+)\/)?([^:@]+)(?::([^@]+))?(?:@(.+))?$/
-                      );
-                      const registry = refMatch?.[1] ?? null;
-                      const repoName = refMatch?.[2] ?? null;
-                      const tag = refMatch?.[3] ?? null;
-                      const digest = refMatch?.[4] ?? null;
-
-                      // Only show a version badge when the ref was successfully parsed.
-                      // Truncate digests to keep the badge compact.
-                      const versionBadge = refMatch
-                        ? tag ?? (digest ? (digest.length > 16 ? digest.substring(0, 16) + "\u2026" : digest) : "latest")
-                        : null;
-                      const displayName = repoName ?? skillRef;
+                    {selectedTeam.agent.spec.skills.refs.map((ref, index) => {
+                      const parts = ref.split("/");
+                      const shortName = parts[parts.length - 1]?.split(":")[0] || ref;
                       return (
                         <SidebarMenuItem key={index}>
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <SidebarMenuButton className="w-full h-auto py-2">
                                 <div className="flex flex-col items-start w-full min-w-0 gap-0.5">
-                                  <div className="flex items-center w-full justify-between gap-2">
-                                    <span className="truncate text-sm font-medium leading-tight">{displayName}</span>
-                                    {versionBadge && (
-                                      <span className="shrink-0 text-[10px] bg-muted px-1.5 py-0.5 rounded-sm text-muted-foreground font-mono">
-                                        {versionBadge}
-                                      </span>
-                                    )}
-                                  </div>
-                                  {registry && (
-                                    <span className="truncate w-full text-xs text-muted-foreground leading-tight" title={registry}>
-                                      {registry}
-                                    </span>
-                                  )}
+                                  <span className="truncate text-sm font-medium leading-tight">{shortName}</span>
+                                  <span className="truncate w-full text-xs text-muted-foreground/70 leading-tight font-mono">
+                                    {ref}
+                                  </span>
                                 </div>
                               </SidebarMenuButton>
                             </TooltipTrigger>
                             <TooltipContent side="left">
-                              <p className="max-w-xs break-all">{skillRef}</p>
+                              <p className="break-all font-mono text-xs">{ref}</p>
                             </TooltipContent>
                           </Tooltip>
                         </SidebarMenuItem>

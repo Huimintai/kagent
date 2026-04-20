@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Plus, ChevronDown, ChevronRight, Pencil, Trash2 } from "lucide-react";
+import { Plus, ChevronDown, ChevronRight, Pencil, Trash2, Info } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { ModelConfig, ModelConfigSpec } from "@/types";
 
@@ -13,6 +13,8 @@ import { getModelConfigs, deleteModelConfig } from "@/app/actions/modelConfigs";
 import { LoadingState } from "@/components/LoadingState";
 import { ErrorState } from "@/components/ErrorState";
 import { toast } from "sonner";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { useAppConfig } from "@/lib/configStore";
 import {
     Dialog,
     DialogContent,
@@ -25,6 +27,7 @@ import { k8sRefUtils } from "@/lib/k8sUtils";
 
 export default function ModelsPage() {
     const router = useRouter();
+    const { disableModelCreation, modelCreationDisabledMessage } = useAppConfig();
     const [models, setModels] = useState<ModelConfig[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -101,11 +104,20 @@ export default function ModelsPage() {
                     <Button
                         variant="default"
                         onClick={() => router.push("/models/new")}
+                        disabled={disableModelCreation}
                     >
                         <Plus className="h-4 w-4 mr-2" />
                         New Model
                     </Button>
                 </div>
+
+                {disableModelCreation && (
+                    <Alert className="mb-6">
+                        <Info className="h-4 w-4" />
+                        <AlertTitle>Model Creation Disabled</AlertTitle>
+                        <AlertDescription>{modelCreationDisabledMessage}</AlertDescription>
+                    </Alert>
+                )}
 
                 {loading ? (
                     <LoadingState />
@@ -130,6 +142,7 @@ export default function ModelsPage() {
                                             data-test={`edit-model-${model.ref}`}
                                             variant="ghost"
                                             size="sm"
+                                            disabled={disableModelCreation}
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 handleEdit(model);
@@ -140,6 +153,7 @@ export default function ModelsPage() {
                                         <Button
                                             variant="destructive"
                                             size="sm"
+                                            disabled={disableModelCreation}
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 handleDelete(model);
