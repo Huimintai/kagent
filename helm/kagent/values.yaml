@@ -251,6 +251,57 @@ ui:
     # Default: /oauth2/start (oauth2-proxy's authentication start endpoint)
     ssoRedirectPath: "/oauth2/start"
   env: {} # Additional configuration key-value pairs for the ui ConfigMap
+  # -- UI feature flags. These are injected as environment variables via ConfigMap.
+  # Changes take effect on pod restart (or rollout restart) without rebuilding the image.
+  featureFlags:
+    # -- Lock the UI to a single namespace. Empty string means all namespaces are visible.
+    allowedNamespace: ""
+    # -- Disable the "New Model" button and show a banner message.
+    disableModelCreation: "false"
+    # -- Message shown when model creation is disabled.
+    modelCreationDisabledMessage: "Model creation is disabled. Please use the pre-defined models provided by your administrator."
+    # -- Disable MCP server creation in the UI.
+    disableMcpServerCreation: "true"
+    # -- Disable BYO (Bring Your Own) agent type in the UI.
+    disableByoAgentCreation: "true"
+    # -- Comma-separated list of agent names that cannot be edited or deleted.
+    protectedAgents: ""
+  # -- Preset CLI container images shown in the agent creation form.
+  # Users can select these instead of typing image refs manually.
+  # Format: JSON array of objects with name, description, and image fields.
+  skillCliPresets: '[{"name":"kubectl","description":"Kubernetes CLI tools","image":"ghcr.io/kagent-dev/skills/kubectl:latest"},{"name":"helm","description":"Helm chart management","image":"ghcr.io/kagent-dev/skills/helm:latest"},{"name":"python-tools","description":"Python data science tools","image":"ghcr.io/kagent-dev/skills/python-tools:latest"},{"name":"git","description":"Git version control CLI","image":"ghcr.io/kagent-dev/skills/git:latest"}]'
+  # -- GitHub OAuth integration for MCP server authentication.
+  # Set clientId and clientSecret to enable the "Connect GitHub" button in the chat UI.
+  github:
+    enabled: false
+    # -- Legacy single-instance config (used when instances is empty)
+    clientId: ""
+    clientSecret: ""
+    oauthUrl: "https://github.com/login/oauth/authorize"
+    tokenUrl: "https://github.com/login/oauth/access_token"
+    scope: "repo read:org read:user"
+    # -- Public-facing origin for OAuth redirect URI (e.g. http://localhost:8082).
+    # Required when the UI is accessed via port-forward or reverse proxy.
+    redirectOrigin: ""
+    # -- Multi-instance config (takes precedence over single-instance when non-empty).
+    # Each entry needs: id, label, clientId, clientSecret, oauthUrl, tokenUrl.
+    # Example:
+    #   instances:
+    #     - id: tools
+    #       label: "github.tools.sap"
+    #       clientId: "abc123"
+    #       clientSecret: "secret1"
+    #       oauthUrl: "https://github.tools.sap/login/oauth/authorize"
+    #       tokenUrl: "https://github.tools.sap/login/oauth/access_token"
+    #       scope: "repo read:org read:user"
+    #     - id: wdf
+    #       label: "github.wdf.sap.corp"
+    #       clientId: "def456"
+    #       clientSecret: "secret2"
+    #       oauthUrl: "https://github.wdf.sap.corp/login/oauth/authorize"
+    #       tokenUrl: "https://github.wdf.sap.corp/login/oauth/access_token"
+    #       scope: "repo read:org read:user"
+    instances: []
   # -- Pod-level security context for the UI pod. Overrides the global podSecurityContext.
   # @default -- (uses global podSecurityContext)
   podSecurityContext: {}

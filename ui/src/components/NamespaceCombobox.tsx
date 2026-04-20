@@ -18,6 +18,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { listNamespaces, type NamespaceResponse } from "@/app/actions/namespaces";
+import { useAppConfig } from "@/lib/configStore";
 
 interface NamespaceComboboxProps {
   value?: string;
@@ -39,6 +40,7 @@ export function NamespaceCombobox({
   const [namespaces, setNamespaces] = useState<NamespaceResponse[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { allowedNamespace } = useAppConfig();
 
   useEffect(() => {
     const loadNamespaces = async () => {
@@ -51,15 +53,25 @@ export function NamespaceCombobox({
           const sorted = [...(response.data || [])].sort((a, b) =>
             a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
           );
-          setNamespaces(sorted);
+
+          let filtered = sorted;
+          if (allowedNamespace) {
+            filtered = sorted.filter((ns) => ns.name === allowedNamespace);
+            if (filtered.length === 0) {
+              filtered = [{ name: allowedNamespace, status: "Active" }];
+            }
+          }
+          setNamespaces(filtered);
           setError(null);
           onError?.(null);
-  
+
           // Set a default namespace if none is currently selected
           if (!value) {
-            const names = sorted.map((ns) => ns.name);
+            const names = filtered.map((ns) => ns.name);
             let defaultNamespace: string | undefined;
-            if (names.includes("kagent")) {
+            if (allowedNamespace) {
+              defaultNamespace = allowedNamespace;
+            } else if (names.includes("kagent")) {
               defaultNamespace = "kagent";
             } else if (names.includes("default")) {
               defaultNamespace = "default";
@@ -90,6 +102,14 @@ export function NamespaceCombobox({
   }, [onError]);
 
   const selectedNamespace = namespaces.find((ns) => ns.name === value);
+
+  if (allowedNamespace && !loading) {
+    return (
+      <div className="flex items-center gap-2 w-full py-2 px-3 border rounded-md bg-muted text-sm">
+        <span>{value || allowedNamespace}</span>
+      </div>
+    );
+  }
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
