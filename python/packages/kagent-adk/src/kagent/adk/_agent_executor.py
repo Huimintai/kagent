@@ -56,6 +56,7 @@ from ._remote_a2a_tool import SubagentSessionProvider
 from .converters.event_converter import convert_event_to_a2a_events, serialize_metadata_value
 from .converters.part_converter import convert_a2a_part_to_genai_part, convert_genai_part_to_a2a_part
 from .converters.request_converter import convert_a2a_request_to_adk_run_args
+from .tools.set_mcp_token_tool import mcp_token_state_key
 
 logger = logging.getLogger("kagent_adk." + __name__)
 
@@ -543,6 +544,24 @@ class A2aAgentExecutor(UpstreamA2aAgentExecutor):
             state_changes = {
                 "headers": headers,
             }
+
+            # Auto-map X-MCP-Token-* headers to mcp_token:* session state keys.
+            # This enables UI-based OAuth flows to inject tokens without going
+            # through the in-chat set_mcp_token tool.
+            # An empty header value means the token was revoked — clear the state key.
+            _MCP_TOKEN_HEADER_PREFIX = "x-mcp-token-"
+            for header_name, header_value in headers.items():
+                lower_name = header_name.lower()
+                if lower_name.startswith(_MCP_TOKEN_HEADER_PREFIX):
+                    label = lower_name[len(_MCP_TOKEN_HEADER_PREFIX):]
+                    if label:
+                        state_key = mcp_token_state_key(label)
+                        if header_value:
+                            state_changes[state_key] = header_value
+                            logger.info("Auto-mapped header '%s' to session state key '%s'", header_name, state_key)
+                        else:
+                            state_changes[state_key] = ""
+                            logger.info("Cleared session state key '%s' (empty header '%s')", state_key, header_name)
 
             actions_with_update = EventActions(state_delta=state_changes)
             system_event = Event(
