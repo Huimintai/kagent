@@ -20,10 +20,11 @@ type StreamableHTTPConnectionParams struct {
 }
 
 type HttpMcpServerConfig struct {
-	Params          StreamableHTTPConnectionParams `json:"params"`
-	Tools           []string                       `json:"tools"`
-	AllowedHeaders  []string                       `json:"allowed_headers,omitempty"`
-	RequireApproval []string                       `json:"require_approval,omitempty"`
+	Params             StreamableHTTPConnectionParams `json:"params"`
+	Tools              []string                       `json:"tools"`
+	AllowedHeaders     []string                       `json:"allowed_headers,omitempty"`
+	RequireApproval    []string                       `json:"require_approval,omitempty"`
+	SessionTokenLabel  string                         `json:"session_token_label,omitempty"`
 }
 
 type SseConnectionParams struct {
@@ -38,10 +39,11 @@ type SseConnectionParams struct {
 }
 
 type SseMcpServerConfig struct {
-	Params          SseConnectionParams `json:"params"`
-	Tools           []string            `json:"tools"`
-	AllowedHeaders  []string            `json:"allowed_headers,omitempty"`
-	RequireApproval []string            `json:"require_approval,omitempty"`
+	Params            SseConnectionParams `json:"params"`
+	Tools             []string            `json:"tools"`
+	AllowedHeaders    []string            `json:"allowed_headers,omitempty"`
+	RequireApproval   []string            `json:"require_approval,omitempty"`
+	SessionTokenLabel string              `json:"session_token_label,omitempty"`
 }
 
 type Model interface {
@@ -103,6 +105,7 @@ const (
 	ModelTypeOllama          = "ollama"
 	ModelTypeGemini          = "gemini"
 	ModelTypeBedrock         = "bedrock"
+	ModelTypeSAPAICore       = "sap_ai_core"
 )
 
 func (o *OpenAI) MarshalJSON() ([]byte, error) {
@@ -263,6 +266,28 @@ func (b *Bedrock) GetType() string {
 	return ModelTypeBedrock
 }
 
+type SAPAICore struct {
+	BaseModel
+	BaseUrl       string `json:"base_url"`
+	ResourceGroup string `json:"resource_group,omitempty"`
+	AuthUrl       string `json:"auth_url,omitempty"`
+}
+
+func (s *SAPAICore) MarshalJSON() ([]byte, error) {
+	type Alias SAPAICore
+	return json.Marshal(&struct {
+		Type string `json:"type"`
+		*Alias
+	}{
+		Type:  ModelTypeSAPAICore,
+		Alias: (*Alias)(s),
+	})
+}
+
+func (s *SAPAICore) GetType() string {
+	return ModelTypeSAPAICore
+}
+
 // GenericModel is a catch-all model type used by the Go ADK when the model
 // type doesn't match any known constant.
 type GenericModel struct {
@@ -325,6 +350,12 @@ func ParseModel(bytes []byte) (Model, error) {
 			return nil, err
 		}
 		return &bedrock, nil
+	case ModelTypeSAPAICore:
+		var sapAICore SAPAICore
+		if err := json.Unmarshal(bytes, &sapAICore); err != nil {
+			return nil, err
+		}
+		return &sapAICore, nil
 	}
 	return nil, fmt.Errorf("unknown model type: %s", model.Type)
 }
@@ -342,6 +373,7 @@ type EmbeddingConfig struct {
 	Provider string `json:"provider"`
 	Model    string `json:"model"`
 	BaseUrl  string `json:"base_url,omitempty"`
+	AuthUrl  string `json:"auth_url,omitempty"`
 }
 
 func (e *EmbeddingConfig) UnmarshalJSON(data []byte) error {
@@ -350,12 +382,14 @@ func (e *EmbeddingConfig) UnmarshalJSON(data []byte) error {
 		Provider string `json:"provider"`
 		Model    string `json:"model"`
 		BaseUrl  string `json:"base_url"`
+		AuthUrl  string `json:"auth_url"`
 	}
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
 	e.Model = tmp.Model
 	e.BaseUrl = tmp.BaseUrl
+	e.AuthUrl = tmp.AuthUrl
 	if tmp.Provider != "" {
 		e.Provider = tmp.Provider
 	} else {
@@ -390,6 +424,10 @@ func ModelToEmbeddingConfig(m Model) *EmbeddingConfig {
 		e.Model = v.Model
 	case *Bedrock:
 		e.Model = v.Model
+	case *SAPAICore:
+		e.Model = v.Model
+		e.BaseUrl = v.BaseUrl
+		e.AuthUrl = v.AuthUrl
 	default:
 		e.Model = ""
 	}

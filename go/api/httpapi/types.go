@@ -124,8 +124,10 @@ func AgentResourceFrom(agent v1alpha2.AgentObject) *AgentResource {
 }
 
 type AgentResponse struct {
-	ID    string         `json:"id"`
-	Agent *AgentResource `json:"agent"`
+	ID          string         `json:"id"`
+	Agent       *AgentResource `json:"agent"`
+	UserID      string         `json:"user_id,omitempty"`
+	PrivateMode bool           `json:"private_mode"`
 	// Config         *adk.AgentConfig       `json:"config"`
 	ModelProvider   v1alpha2.ModelProvider `json:"modelProvider"`
 	Model           string                 `json:"model"`
@@ -206,6 +208,8 @@ type CreateMemoryRequest struct {
 type UpdateMemoryRequest struct {
 	PineconeParams *v1alpha1.PineconeConfig `json:"pinecone,omitempty"`
 }
+
+// PromptTemplate types
 
 // PromptTemplateSummary is a lightweight entry for listing prompt ConfigMaps.
 type PromptTemplateSummary struct {

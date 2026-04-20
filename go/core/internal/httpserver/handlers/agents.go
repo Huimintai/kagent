@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"net/http"
+	"strconv"
 
 	"github.com/go-logr/logr"
 	api "github.com/kagent-dev/kagent/go/api/httpapi"
@@ -111,6 +112,7 @@ func (h *AgentsHandler) getAgentResponse(ctx context.Context, log logr.Logger, a
 	log.V(1).Info("Processing Agent", "agentRef", agentRef)
 	spec := agent.GetAgentSpec()
 	status := agent.GetAgentStatus()
+	agentID := utils.ConvertToPythonIdentifier(agentRef)
 
 	deploymentReady := false
 	for _, condition := range status.Conditions {
@@ -132,11 +134,31 @@ func (h *AgentsHandler) getAgentResponse(ctx context.Context, log logr.Logger, a
 	}
 
 	response := api.AgentResponse{
-		ID:              utils.ConvertToPythonIdentifier(agentRef),
+		ID:              agentID,
 		Agent:           api.AgentResourceFrom(agent),
+		UserID:          utils.DefaultAgentUserID,
+		PrivateMode:     utils.DefaultAgentPrivateMode,
 		DeploymentReady: deploymentReady,
 		Accepted:        accepted,
 		WorkloadMode:    agent.GetWorkloadMode(),
+	}
+
+	if annotations := agent.GetAnnotations(); annotations != nil {
+		if userID, ok := annotations[utils.AgentUserIDAnnotation]; ok && userID != "" {
+			response.UserID = userID
+		}
+		if rawPrivateMode, ok := annotations[utils.AgentPrivateModeAnnotation]; ok {
+			if parsedPrivateMode, err := strconv.ParseBool(rawPrivateMode); err == nil {
+				response.PrivateMode = parsedPrivateMode
+			}
+		}
+	}
+
+	if dbAgent, err := h.DatabaseService.GetAgent(ctx, agentID); err == nil && dbAgent != nil {
+		response.UserID = dbAgent.UserID
+		response.PrivateMode = dbAgent.PrivateMode
+	} else if err != nil {
+		log.V(1).Info("Agent not found in database; using metadata/default access state", "agentID", agentID, "error", err.Error())
 	}
 
 	if spec.Type == v1alpha2.AgentType_Declarative && spec.Declarative != nil {
@@ -146,11 +168,7 @@ func (h *AgentsHandler) getAgentResponse(ctx context.Context, log logr.Logger, a
 			Namespace: agent.GetNamespace(),
 			Name:      spec.Declarative.ModelConfig,
 		}
-		if err := h.KubeClient.Get(
-			ctx,
-			objKey,
-			modelConfig,
-		); err != nil {
+		if err := h.KubeClient.Get(ctx, objKey, modelConfig); err != nil {
 			if apierrors.IsNotFound(err) {
 				log.V(1).Info("ModelConfig not found", "modelConfigRef", objKey)
 			} else {
@@ -368,6 +386,14 @@ func (h *AgentsHandler) handleCreateAgentObject(
 		w.RespondWithError(err)
 		return
 	}
+
+	userID, uidErr := GetUserID(r)
+	if uidErr != nil {
+		w.RespondWithError(errors.NewBadRequestError("Failed to get user ID", uidErr))
+		return
+	}
+	setAgentAccessMetadata(agent, agent.GetAnnotations(), userID)
+
 	if err = h.KubeClient.Create(r.Context(), agent); err != nil {
 		w.RespondWithError(errors.NewInternalServerError("Failed to create Agent in Kubernetes", err))
 		return
@@ -443,6 +469,13 @@ func (h *AgentsHandler) handleUpdateAgentObject(
 	}
 
 	*existing.GetAgentSpec() = *incoming.GetAgentSpec()
+
+	userID, uidErr := GetUserID(r)
+	if uidErr != nil {
+		w.RespondWithError(errors.NewBadRequestError("Failed to get user ID", uidErr))
+		return
+	}
+	setAgentAccessMetadata(existing, incoming.GetAnnotations(), userID)
 
 	if err := h.validateAgentObject(r.Context(), existing); err != nil {
 		w.RespondWithError(err)
@@ -594,4 +627,22 @@ func (h *AgentsHandler) HandleDeleteSandboxAgent(w ErrorResponseWriter, r *http.
 		"Failed to delete SandboxAgent",
 		"Successfully deleted sandbox agent",
 	)
+}
+
+func setAgentAccessMetadata(agent client.Object, sourceAnnotations map[string]string, userID string) {
+	privateMode := utils.DefaultAgentPrivateMode
+	if rawPrivateMode, ok := sourceAnnotations[utils.AgentPrivateModeAnnotation]; ok {
+		if parsedPrivateMode, err := strconv.ParseBool(rawPrivateMode); err == nil {
+			privateMode = parsedPrivateMode
+		}
+	}
+
+	annotations := agent.GetAnnotations()
+	if annotations == nil {
+		annotations = make(map[string]string)
+	}
+
+	annotations[utils.AgentUserIDAnnotation] = userID
+	annotations[utils.AgentPrivateModeAnnotation] = strconv.FormatBool(privateMode)
+	agent.SetAnnotations(annotations)
 }

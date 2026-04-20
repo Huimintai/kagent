@@ -568,6 +568,8 @@ func TestHandleUpdateAgent(t *testing.T) {
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		require.NoError(t, err)
 		require.Equal(t, "new-model-config", response.Data.Spec.Declarative.ModelConfig)
+		require.Equal(t, "test-user", response.Data.Annotations[common.AgentUserIDAnnotation])
+		require.Equal(t, "true", response.Data.Annotations[common.AgentPrivateModeAnnotation])
 	})
 
 	t.Run("returns 400 for invalid updated agent configuration", func(t *testing.T) {
@@ -632,6 +634,69 @@ func TestHandleUpdateAgent(t *testing.T) {
 
 		require.Equal(t, http.StatusNotFound, w.Code)
 	})
+
+	t.Run("updates private-mode annotation when explicitly false", func(t *testing.T) {
+		oldModelConfig := &v1alpha2.ModelConfig{
+			ObjectMeta: metav1.ObjectMeta{Name: "old-model-config", Namespace: "default"},
+			Spec: v1alpha2.ModelConfigSpec{
+				Model:    "gpt-4o-mini",
+				Provider: v1alpha2.ModelProviderOpenAI,
+			},
+		}
+		newModelConfig := &v1alpha2.ModelConfig{
+			ObjectMeta: metav1.ObjectMeta{Name: "new-model-config", Namespace: "default"},
+			Spec: v1alpha2.ModelConfigSpec{
+				Model:    "gpt-4.1",
+				Provider: v1alpha2.ModelProviderOpenAI,
+			},
+		}
+		existingAgent := &v1alpha2.Agent{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-team", Namespace: "default"},
+			Spec: v1alpha2.AgentSpec{
+				Type: v1alpha2.AgentType_Declarative,
+				Declarative: &v1alpha2.DeclarativeAgentSpec{
+					ModelConfig:   "old-model-config",
+					SystemMessage: "old system message",
+				},
+			},
+		}
+
+		handler, _ := setupTestHandler(existingAgent, oldModelConfig, newModelConfig)
+
+		updatedAgent := &v1alpha2.Agent{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-team",
+				Namespace: "default",
+				Annotations: map[string]string{
+					common.AgentPrivateModeAnnotation: "false",
+				},
+			},
+			Spec: v1alpha2.AgentSpec{
+				Type: v1alpha2.AgentType_Declarative,
+				Declarative: &v1alpha2.DeclarativeAgentSpec{
+					ModelConfig:   "new-model-config",
+					SystemMessage: "new system message",
+				},
+			},
+		}
+
+		body, _ := json.Marshal(updatedAgent)
+		req := httptest.NewRequest("PUT", "/api/agents/default/test-team", bytes.NewBuffer(body))
+		req = mux.SetURLVars(req, map[string]string{"namespace": "default", "name": "test-team"})
+		req.Header.Set("Content-Type", "application/json")
+		req = setUser(req, "test-user")
+		w := httptest.NewRecorder()
+
+		handler.HandleUpdateAgent(&testErrorResponseWriter{w}, req)
+
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response api.StandardResponse[v1alpha2.Agent]
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+		require.Equal(t, "false", response.Data.Annotations[common.AgentPrivateModeAnnotation])
+		require.Equal(t, "test-user", response.Data.Annotations[common.AgentUserIDAnnotation])
+	})
 }
 
 func TestHandleCreateAgent(t *testing.T) {
@@ -676,6 +741,8 @@ func TestHandleCreateAgent(t *testing.T) {
 		require.Equal(t, "default", response.Data.Namespace)
 		require.Equal(t, "You are an imaginary agent", response.Data.Spec.Declarative.SystemMessage)
 		require.Equal(t, "test-model-config", response.Data.Spec.Declarative.ModelConfig)
+		require.Equal(t, "test-user", response.Data.Annotations[common.AgentUserIDAnnotation])
+		require.Equal(t, "true", response.Data.Annotations[common.AgentPrivateModeAnnotation])
 	})
 }
 
