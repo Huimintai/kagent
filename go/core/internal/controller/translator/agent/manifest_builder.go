@@ -57,7 +57,7 @@ func (a *adkApiTranslator) BuildManifest(
 	outputs := &AgentOutputs{}
 	manifestCtx := newManifestContext(agent, inputs.Deployment)
 
-	configSecret, err := a.buildConfigSecret(manifestCtx, inputs.Config, inputs.Sandbox, inputs.AgentCard, inputs.SecretHashBytes)
+	configSecret, err := a.buildConfigSecret(ctx, manifestCtx, inputs.Config, inputs.Sandbox, inputs.AgentCard, inputs.SecretHashBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -129,6 +129,7 @@ func (m manifestContext) objectMeta() metav1.ObjectMeta {
 }
 
 func (a *adkApiTranslator) buildConfigSecret(
+	ctx context.Context,
 	manifestCtx manifestContext,
 	cfg *adk.AgentConfig,
 	sandboxCfg *v1alpha2.SandboxConfig,
@@ -157,7 +158,7 @@ func (a *adkApiTranslator) buildConfigSecret(
 		agentCard = string(bCard)
 	}
 	if needsSRTSettings(manifestCtx.agent, sandboxCfg) {
-		bSRTSettings, err := buildSRTSettingsJSON(sandboxCfg)
+		bSRTSettings, err := a.buildSRTSettingsJSON(ctx, manifestCtx.agent, sandboxCfg)
 		if err != nil {
 			return nil, err
 		}
@@ -297,8 +298,17 @@ func needsSRTSettings(agent v1alpha2.AgentObject, sandboxCfg *v1alpha2.SandboxCo
 		*spec.Declarative.ExecuteCodeBlocks
 }
 
-func buildSRTSettingsJSON(sandboxCfg *v1alpha2.SandboxConfig) ([]byte, error) {
-	allowedDomains := []string{}
+func (a *adkApiTranslator) buildSRTSettingsJSON(ctx context.Context, agent v1alpha2.AgentObject, sandboxCfg *v1alpha2.SandboxConfig) ([]byte, error) {
+	svcList := &corev1.ServiceList{}
+	if err := a.kube.List(ctx, svcList, client.InNamespace(agent.GetNamespace())); err != nil {
+		return nil, fmt.Errorf("failed to list services in namespace %s: %w", agent.GetNamespace(), err)
+	}
+
+	allowedDomains := make([]string, 0, len(svcList.Items))
+	for _, svc := range svcList.Items {
+		allowedDomains = append(allowedDomains, svc.Name+"."+agent.GetNamespace())
+	}
+
 	if sandboxCfg != nil && sandboxCfg.Network != nil {
 		allowedDomains = append(allowedDomains, sandboxCfg.Network.AllowedDomains...)
 	}
@@ -313,6 +323,8 @@ func buildSRTSettingsJSON(sandboxCfg *v1alpha2.SandboxConfig) ([]byte, error) {
 			"allowWrite": []string{".", "/tmp"},
 			"denyWrite":  []string{},
 		},
+		"enableWeakerNestedSandbox": true,
+		"allowAllUnixSockets":       true,
 	})
 }
 

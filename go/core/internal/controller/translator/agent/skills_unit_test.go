@@ -301,6 +301,7 @@ func Test_prepareSkillsInitData_sshHosts(t *testing.T) {
 		&corev1.LocalObjectReference{Name: "ssh-secret"},
 		nil,
 		false,
+		false,
 	)
 	require.NoError(t, err)
 	assert.Equal(t, []sshHostData{
@@ -318,6 +319,7 @@ func Test_prepareSkillsInitData_sshHostsDedupesDefaultPort(t *testing.T) {
 		&corev1.LocalObjectReference{Name: "ssh-secret"},
 		nil,
 		false,
+		false,
 	)
 	require.NoError(t, err)
 	assert.Equal(t, []sshHostData{
@@ -333,6 +335,7 @@ func Test_prepareSkillsInitData_noAuthSkipsSSHHosts(t *testing.T) {
 		},
 		nil, // no auth secret
 		nil,
+		false,
 		false,
 	)
 	require.NoError(t, err)
