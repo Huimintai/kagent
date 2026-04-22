@@ -1,15 +1,22 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
 	"github.com/kagent-dev/kagent/go/api/v1alpha2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	schemev1 "k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 func TestBuildSRTSettingsJSON_DefaultDenyConfig(t *testing.T) {
-	got, err := buildSRTSettingsJSON(nil)
+	agent := &v1alpha2.Agent{
+		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
+	}
+	tr := &adkApiTranslator{kube: fake.NewClientBuilder().WithScheme(schemev1.Scheme).Build()}
+	got, err := tr.buildSRTSettingsJSON(context.Background(), agent, nil)
 	if err != nil {
 		t.Fatalf("buildSRTSettingsJSON() error = %v", err)
 	}
@@ -42,6 +49,13 @@ func TestBuildSRTSettingsJSON_DefaultDenyConfig(t *testing.T) {
 	}
 	if got := filesystem["denyWrite"]; len(got.([]any)) != 0 {
 		t.Fatalf("denyWrite = %#v, want empty list", got)
+	}
+
+	if v, ok := settings["enableWeakerNestedSandbox"]; !ok || v != true {
+		t.Fatalf("enableWeakerNestedSandbox = %#v, want true", v)
+	}
+	if v, ok := settings["allowAllUnixSockets"]; !ok || v != true {
+		t.Fatalf("allowAllUnixSockets = %#v, want true", v)
 	}
 }
 

@@ -76,7 +76,6 @@ export const PROVIDERS_INFO: {
         modelDocsLink: "https://help.sap.com/docs/sap-ai-core/sap-ai-core-service-guide/models-and-scenarios-in-generative-ai-hub",
         help: "Create a K8s Secret with client_id and client_secret from your SAP AI Core service key."
     },
-    },
 };
 
 export const isValidProviderInfoKey = (key: string): key is ModelProviderKey => {

@@ -161,7 +161,6 @@ export interface CreateModelConfigRequest {
   apiKey?: string;
   spec: ModelConfigSpec;
 }
-}
 
 export interface UpdateModelConfigPayload {
   apiKey?: string | null;
