@@ -49,6 +49,8 @@ func (c *postgresClient) StoreAgent(ctx context.Context, agent *dbpkg.Agent) err
 		Type:         agent.Type,
 		WorkloadType: string(agent.WorkloadType),
 		Config:       agent.Config,
+		UserID:       agent.UserID,
+		PrivateMode:  agent.PrivateMode,
 	})
 }
 
@@ -705,6 +707,8 @@ func toAgent(r dbgen.Agent) *dbpkg.Agent {
 		Type:         r.Type,
 		WorkloadType: v1alpha2.WorkloadMode(r.WorkloadType),
 		Config:       r.Config,
+		UserID:       r.UserID,
+		PrivateMode:  r.PrivateMode,
 	}
 }
 
