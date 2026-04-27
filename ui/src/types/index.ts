@@ -245,6 +245,8 @@ export interface TypedLocalReference {
 export interface McpServerTool extends TypedLocalReference {
   toolNames: string[];
   requireApproval?: string[];
+  allowedHeaders?: string[];
+  sessionTokenLabel?: string;
 }
 
 export type AgentType = "Declarative" | "BYO" | "Sandbox";

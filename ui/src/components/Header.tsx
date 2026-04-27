@@ -4,18 +4,26 @@ import Link from "next/link";
 import { Button } from "./ui/button";
 import KAgentLogoWithText from "./kagent-logo-text";
 import KagentLogo from "./kagent-logo";
-import { Plus, Menu, X, ChevronDown, Brain, Server, Eye, Hammer, HomeIcon, ScrollText } from "lucide-react";
+import { Plus, Menu, X, ChevronDown, Brain, Server, Eye, Hammer, HomeIcon, ScrollText, LogOut, Ban, Clock } from "lucide-react";
+import { useAppConfig } from "@/lib/configStore";
+import { Identicon } from "./Identicon";
 import { ThemeToggle } from "./ThemeToggle";
-import { UserMenu } from "./UserMenu";
+import GitHubConnectButton from "./GitHubConnectButton";
+import { useUserStore } from "@/lib/userStore";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
 export function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const userId = useUserStore((state) => state.userId);
+  const clearLoginSession = useUserStore((state) => state.clearLoginSession);
+  const { disableModelCreation, disableMcpServerCreation } = useAppConfig();
 
   const toggleMenu = () => {
     setIsMenuOpen(!isMenuOpen);
@@ -32,8 +40,9 @@ export function Header() {
     <nav className="py-4 md:py-8 border-b">
       <div className="max-w-6xl mx-auto px-4 md:px-6">
         <div className="flex justify-between items-center">
-          <Link href="/">
+          <Link href="/" className="flex items-center gap-3">
             <KAgentLogoWithText className="h-5" />
+            <span className="text-sm font-semibold text-muted-foreground hidden lg:block">DBCI kagent Playground</span>
           </Link>
           
           {/* Mobile menu button */}
@@ -71,17 +80,31 @@ export function Header() {
                     New Agent
                   </Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href="/models/new" className="gap-2 cursor-pointer w-full">
-                    <Brain className="h-4 w-4" />
-                    New Model
-                  </Link>
+                <DropdownMenuItem asChild={!disableModelCreation} disabled={disableModelCreation}>
+                  {disableModelCreation ? (
+                    <span className="gap-2 w-full flex items-center">
+                      <Ban className="h-4 w-4" />
+                      New Model
+                    </span>
+                  ) : (
+                    <Link href="/models/new" className="gap-2 cursor-pointer w-full">
+                      <Brain className="h-4 w-4" />
+                      New Model
+                    </Link>
+                  )}
                 </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href="/servers" className="gap-2 cursor-pointer w-full">
-                    <Server className="h-4 w-4" />
-                    New MCP Server
-                  </Link>
+                <DropdownMenuItem asChild={!disableMcpServerCreation} disabled={disableMcpServerCreation}>
+                  {disableMcpServerCreation ? (
+                    <span className="gap-2 w-full flex items-center">
+                      <Ban className="h-4 w-4" />
+                      New MCP Server
+                    </span>
+                  ) : (
+                    <Link href="/servers" className="gap-2 cursor-pointer w-full">
+                      <Server className="h-4 w-4" />
+                      New MCP Server
+                    </Link>
+                  )}
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
                   <Link href="/prompts/new" className="gap-2 cursor-pointer w-full">
@@ -89,9 +112,15 @@ export function Header() {
                     New prompt library
                   </Link>
                 </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/schedules/new" className="gap-2 cursor-pointer w-full">
+                    <Clock className="h-4 w-4" />
+                    New Schedule
+                  </Link>
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            
+
             {/* View Dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -131,23 +160,41 @@ export function Header() {
                     Prompt Library
                   </Link>
                 </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/schedules" className="gap-2 cursor-pointer w-full">
+                    <Clock className="h-4 w-4" />
+                    Schedules
+                  </Link>
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
 
 
-            {/* Other Links */}
-            <Button variant="link" className="text-secondary-foreground" asChild>
-              <Link href="https://github.com/kagent-dev/kagent" target="_blank">Contribute</Link>
-            </Button>
-            <Button variant="link" className="text-secondary-foreground" asChild>
-              <Link href="https://discord.gg/Fu3k65f2k3" target="_blank">Community</Link>
-            </Button>
-            
-            <ThemeToggle />
-            <UserMenu />
+
+            <div className="flex items-center gap-2">
+              <GitHubConnectButton />
+              <ThemeToggle />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" aria-label="User menu" className="overflow-hidden p-0">
+                    <Identicon value={userId || "user"} size={32} />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="max-w-64">
+                  <DropdownMenuItem disabled className="break-all">
+                    {userId}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={clearLoginSession}>
+                    <LogOut className="h-4 w-4" />
+                    Sign out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
         </div>
-
+        
         {/* Mobile menu */}
         {isMenuOpen && (
           <div className="md:hidden pt-4 pb-2 animate-in fade-in slide-in-from-top duration-300">
@@ -200,6 +247,12 @@ export function Header() {
                       Prompt Library
                     </Link>
                   </DropdownMenuItem>
+                  <DropdownMenuItem asChild onClick={handleMobileLinkClick}>
+                    <Link href="/schedules" className="gap-2 cursor-pointer w-full">
+                      <Clock className="h-4 w-4" />
+                      Schedules
+                    </Link>
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
 
@@ -219,17 +272,31 @@ export function Header() {
                       New Agent
                     </Link>
                   </DropdownMenuItem>
-                  <DropdownMenuItem asChild onClick={handleMobileLinkClick}>
-                    <Link href="/models/new" className="gap-2 cursor-pointer w-full">
-                      <Brain className="h-4 w-4" />
-                      New Model
-                    </Link>
+                  <DropdownMenuItem asChild={!disableModelCreation} disabled={disableModelCreation} onClick={disableModelCreation ? undefined : handleMobileLinkClick}>
+                    {disableModelCreation ? (
+                      <span className="gap-2 w-full flex items-center">
+                        <Ban className="h-4 w-4" />
+                        New Model
+                      </span>
+                    ) : (
+                      <Link href="/models/new" className="gap-2 cursor-pointer w-full">
+                        <Brain className="h-4 w-4" />
+                        New Model
+                      </Link>
+                    )}
                   </DropdownMenuItem>
-                  <DropdownMenuItem asChild onClick={handleMobileLinkClick}>
-                    <Link href="/servers/new" className="gap-2 cursor-pointer w-full">
-                      <Server className="h-4 w-4" />
-                      New MCP Server
-                    </Link>
+                  <DropdownMenuItem asChild={!disableMcpServerCreation} disabled={disableMcpServerCreation} onClick={disableMcpServerCreation ? undefined : handleMobileLinkClick}>
+                    {disableMcpServerCreation ? (
+                      <span className="gap-2 w-full flex items-center">
+                        <Ban className="h-4 w-4" />
+                        New MCP Server
+                      </span>
+                    ) : (
+                      <Link href="/servers" className="gap-2 cursor-pointer w-full">
+                        <Server className="h-4 w-4" />
+                        New MCP Server
+                      </Link>
+                    )}
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild onClick={handleMobileLinkClick}>
                     <Link href="/prompts/new" className="gap-2 cursor-pointer w-full">
@@ -237,20 +304,42 @@ export function Header() {
                       New prompt library
                     </Link>
                   </DropdownMenuItem>
+                  <DropdownMenuItem asChild onClick={handleMobileLinkClick}>
+                    <Link href="/schedules/new" className="gap-2 cursor-pointer w-full">
+                      <Clock className="h-4 w-4" />
+                      New Schedule
+                    </Link>
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              
-              {/* Mobile Other Links */}
-              <Button variant="ghost" className="text-secondary-foreground justify-start px-1" asChild>
-                <Link href="https://github.com/kagent-dev/kagent" target="_blank" onClick={handleMobileLinkClick}>Contribute</Link>
-              </Button>
-              <Button variant="ghost" className="text-secondary-foreground justify-start px-1" asChild>
-                <Link href="https://discord.gg/Fu3k65f2k3" target="_blank" onClick={handleMobileLinkClick}>Community</Link>
-              </Button>
 
-              <div className="flex items-center justify-between py-2">
-                <UserMenu onMobileLinkClick={handleMobileLinkClick} />
+              <div className="flex items-center justify-end gap-2 py-2">
+                <GitHubConnectButton />
                 <ThemeToggle />
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" aria-label="User menu" className="overflow-hidden p-0">
+                      <Identicon value={userId || "user"} size={32} />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="max-w-64">
+                    <DropdownMenuLabel>Signed in as</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem disabled className="break-all">
+                      {userId}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => {
+                        clearLoginSession()
+                        handleMobileLinkClick()
+                      }}
+                    >
+                      <LogOut className="h-4 w-4" />
+                      Sign out
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
           </div>

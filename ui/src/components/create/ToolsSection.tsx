@@ -2,6 +2,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { Plus, FunctionSquare, X } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useState, useEffect } from "react";
@@ -95,6 +97,23 @@ export const ToolsSection = ({ selectedTools, setSelectedTools, isSubmitting, on
     );
   };
 
+  const setAllowedHeadersForServer = (parentToolIdentifier: string, headers: string[]) => {
+    setSelectedTools(
+      selectedTools.map((tool) => {
+        if (getToolIdentifier(tool) !== parentToolIdentifier || !isMcpTool(tool)) {
+          return tool;
+        }
+        return {
+          ...tool,
+          mcpServer: {
+            ...tool.mcpServer!,
+            allowedHeaders: headers.length > 0 ? headers : undefined,
+          },
+        };
+      })
+    );
+  };
+
   const handleRemoveTool = (parentToolIdentifier: string, mcpToolNameToRemove?: string) => {
     let updatedTools: Tool[];
 
@@ -127,93 +146,111 @@ export const ToolsSection = ({ selectedTools, setSelectedTools, isSubmitting, on
     setSelectedTools(updatedTools);
   };
 
-  const renderSelectedTools = () => (
-    <div className="space-y-2">
-      {selectedTools.flatMap((agentTool: Tool) => {
-        const parentToolIdentifier = getToolIdentifier(agentTool);
+  const renderSelectedTools = () => {
+    // Group MCP tools by server to render server-level controls once per server
+    const mcpServers: { tool: Tool; identifier: string }[] = [];
+    const agentTools: Tool[] = [];
 
-        if (isMcpTool(agentTool)) {
+    selectedTools.forEach((tool) => {
+      if (isMcpTool(tool)) {
+        mcpServers.push({ tool, identifier: getToolIdentifier(tool) });
+      } else {
+        agentTools.push(tool);
+      }
+    });
+
+    return (
+      <div className="space-y-2">
+        {mcpServers.map(({ tool: agentTool, identifier: parentToolIdentifier }) => {
           const mcpTool = agentTool as Tool;
-          return mcpTool.mcpServer?.toolNames.map((mcpToolName: string) => {
-            const toolIdentifierForDisplay = `${parentToolIdentifier}::${mcpToolName}`;
-            
-            // Show server name with namespace for consistency
-            const serverName = mcpTool.mcpServer?.name || "";
-            const serverNamespace = mcpTool.mcpServer?.namespace || currentAgentNamespace;
-            const serverDisplayName = `${serverNamespace}/${serverName}`;
-            const displayName = `${mcpToolName} (${serverDisplayName})`;
+          const serverName = mcpTool.mcpServer?.name || "";
+          const serverNamespace = mcpTool.mcpServer?.namespace || currentAgentNamespace;
+          const serverDisplayName = `${serverNamespace}/${serverName}`;
+          const currentHeaders = mcpTool.mcpServer?.allowedHeaders || [];
 
-            // The tools on agent resource don't have descriptions, so we need to 
-            // get the descriptions from the db
-            let displayDescription = "Description not available.";
-            const toolFromDB = availableTools.find(server => {
-              // Compare server names
-              const serverMatch = serverNamesMatch(server.server_name, mcpTool.mcpServer?.name || "");
-              // also check if the tool ID matches
-              const toolIdMatch = server.id === mcpToolName;
-              return serverMatch && toolIdMatch;
-            });
+          return (
+            <div key={parentToolIdentifier} className="space-y-2">
+              {mcpTool.mcpServer?.toolNames.map((mcpToolName: string) => {
+                const toolIdentifierForDisplay = `${parentToolIdentifier}::${mcpToolName}`;
+                const displayName = `${mcpToolName} (${serverDisplayName})`;
 
-            if (toolFromDB) {
-              displayDescription = toolFromDB.description;
-            }
+                let displayDescription = "Description not available.";
+                const toolFromDB = availableTools.find(server => {
+                  const serverMatch = serverNamesMatch(server.server_name, mcpTool.mcpServer?.name || "");
+                  const toolIdMatch = server.id === mcpToolName;
+                  return serverMatch && toolIdMatch;
+                });
+                if (toolFromDB) {
+                  displayDescription = toolFromDB.description;
+                }
 
-            const Icon = FunctionSquare;
-            const iconColor = "text-blue-400";
-            const approvalSet = new Set(mcpTool.mcpServer?.requireApproval || []);
-            const requiresApproval = approvalSet.has(mcpToolName);
-            const approvalFieldId = `require-approval-${toolIdentifierForDisplay}`.replace(
-              /[^a-zA-Z0-9_-]/g,
-              "_"
-            );
+                const Icon = FunctionSquare;
+                const iconColor = "text-blue-400";
+                const approvalSet = new Set(mcpTool.mcpServer?.requireApproval || []);
+                const requiresApproval = approvalSet.has(mcpToolName);
+                const approvalFieldId = `require-approval-${toolIdentifierForDisplay}`.replace(
+                  /[^a-zA-Z0-9_-]/g,
+                  "_"
+                );
 
-            return (
-              <Card key={toolIdentifierForDisplay}>
-                <CardContent className="space-y-1.5 p-3">
-                  <div className="flex min-w-0 items-start gap-2">
-                    <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${iconColor}`} />
-                    <div className="min-w-0 flex-1 text-xs">
-                      <p className="font-medium leading-tight" title={displayName}>
-                        <span className="line-clamp-2 break-words">{displayName}</span>
-                      </p>
-                      <p
-                        className="mt-0.5 text-muted-foreground line-clamp-1 break-words leading-snug"
-                        title={displayDescription}
-                      >
-                        {displayDescription}
-                      </p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 w-8 shrink-0 p-0"
-                      onClick={() => handleRemoveTool(parentToolIdentifier, mcpToolName)}
-                      disabled={isSubmitting}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <div className="flex min-w-0 items-center gap-2 border-t border-border/60 pt-1.5">
-                    <Switch
-                      id={approvalFieldId}
-                      checked={requiresApproval}
-                      disabled={isSubmitting}
-                      onCheckedChange={(checked) =>
-                        setRequireApprovalForMcpTool(parentToolIdentifier, mcpToolName, checked)
-                      }
-                    />
-                    <Label
-                      htmlFor={approvalFieldId}
-                      className="min-w-0 cursor-pointer text-xs font-normal leading-snug"
-                    >
-                      <span className="line-clamp-2 sm:line-clamp-1">Require approval before this tool runs</span>
-                    </Label>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          });
-        } else {
+                return (
+                  <Card key={toolIdentifierForDisplay}>
+                    <CardContent className="space-y-1.5 p-3">
+                      <div className="flex min-w-0 items-start gap-2">
+                        <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${iconColor}`} />
+                        <div className="min-w-0 flex-1 text-xs">
+                          <p className="font-medium leading-tight" title={displayName}>
+                            <span className="line-clamp-2 break-words">{displayName}</span>
+                          </p>
+                          <p
+                            className="mt-0.5 text-muted-foreground line-clamp-1 break-words leading-snug"
+                            title={displayDescription}
+                          >
+                            {displayDescription}
+                          </p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 shrink-0 p-0"
+                          onClick={() => handleRemoveTool(parentToolIdentifier, mcpToolName)}
+                          disabled={isSubmitting}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <div className="flex min-w-0 items-center gap-2 border-t border-border/60 pt-1.5">
+                        <Switch
+                          id={approvalFieldId}
+                          checked={requiresApproval}
+                          disabled={isSubmitting}
+                          onCheckedChange={(checked) =>
+                            setRequireApprovalForMcpTool(parentToolIdentifier, mcpToolName, checked)
+                          }
+                        />
+                        <Label
+                          htmlFor={approvalFieldId}
+                          className="min-w-0 cursor-pointer text-xs font-normal leading-snug"
+                        >
+                          <span className="line-clamp-2 sm:line-clamp-1">Require approval before this tool runs</span>
+                        </Label>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+              {/* Server-level allowed headers control */}
+              <AllowedHeadersControl
+                headers={currentHeaders}
+                onChange={(headers) => setAllowedHeadersForServer(parentToolIdentifier, headers)}
+                disabled={isSubmitting}
+                serverName={serverDisplayName}
+              />
+            </div>
+          );
+        })}
+        {agentTools.map((agentTool) => {
+          const parentToolIdentifier = getToolIdentifier(agentTool);
           const displayName = getToolDisplayName(agentTool, currentAgentNamespace);
           const displayDescription = getToolDescription(agentTool, availableTools);
 
@@ -228,7 +265,7 @@ export const ToolsSection = ({ selectedTools, setSelectedTools, isSubmitting, on
             currentIconColor = "text-yellow-500";
           }
 
-          return [( // flatMap expects an array
+          return (
             <Card key={parentToolIdentifier}>
               <CardContent className="p-4">
                 <div className="flex min-w-0 w-full items-center justify-between gap-2">
@@ -249,11 +286,11 @@ export const ToolsSection = ({ selectedTools, setSelectedTools, isSubmitting, on
                 </div>
               </CardContent>
             </Card>
-          )];
-        }
-      })}
-    </div>
-  );
+          );
+        })}
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -316,3 +353,89 @@ export const ToolsSection = ({ selectedTools, setSelectedTools, isSubmitting, on
     </div>
   );
 };
+
+function AllowedHeadersControl({
+  headers,
+  onChange,
+  disabled,
+  serverName,
+}: {
+  headers: string[];
+  onChange: (headers: string[]) => void;
+  disabled: boolean;
+  serverName: string;
+}) {
+  const [inputValue, setInputValue] = useState("");
+
+  const addHeader = (header: string) => {
+    const trimmed = header.trim().toLowerCase();
+    if (trimmed && !headers.includes(trimmed)) {
+      onChange([...headers, trimmed]);
+    }
+    setInputValue("");
+  };
+
+  const removeHeader = (header: string) => {
+    onChange(headers.filter((h) => h !== header));
+  };
+
+  return (
+    <div className="ml-6 space-y-1.5 rounded-md border border-border/40 bg-muted/30 p-2.5">
+      <Label className="text-xs font-normal text-muted-foreground">
+        Forwarded headers for <span className="font-medium text-foreground">{serverName}</span>
+      </Label>
+      <div className="flex flex-wrap gap-1">
+        {headers.map((header) => (
+          <Badge key={header} variant="secondary" className="gap-1 text-xs">
+            {header}
+            <button
+              type="button"
+              onClick={() => removeHeader(header)}
+              disabled={disabled}
+              className="ml-0.5 hover:text-destructive"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </Badge>
+        ))}
+      </div>
+      <div className="flex items-center gap-1.5">
+        <Input
+          placeholder="Header name..."
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              addHeader(inputValue);
+            }
+          }}
+          disabled={disabled}
+          className="h-7 flex-1 text-xs"
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-7 text-xs"
+          onClick={() => addHeader(inputValue)}
+          disabled={disabled || !inputValue.trim()}
+        >
+          Add
+        </Button>
+      </div>
+      {!headers.includes("authorization") && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-6 px-2 text-xs text-muted-foreground"
+          onClick={() => addHeader("authorization")}
+          disabled={disabled}
+        >
+          + authorization
+        </Button>
+      )}
+    </div>
+  );
+}

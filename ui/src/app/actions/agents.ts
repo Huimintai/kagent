@@ -80,6 +80,8 @@ function fromAgentFormDataToAgent(agentFormData: AgentFormData): Agent {
             apiGroup: mcpServer.apiGroup,
             toolNames: mcpServer.toolNames,
             ...(requireApproval ? { requireApproval } : {}),
+            ...(mcpServer.allowedHeaders && mcpServer.allowedHeaders.length > 0 ? { allowedHeaders: mcpServer.allowedHeaders } : {}),
+            ...(mcpServer.sessionTokenLabel ? { sessionTokenLabel: mcpServer.sessionTokenLabel } : {}),
           },
         } as Tool;
       }
@@ -92,13 +94,13 @@ function fromAgentFormDataToAgent(agentFormData: AgentFormData): Agent {
 
         let name = agent.name;
         let namespace: string | undefined = agent.namespace;
-        
+
         if (k8sRefUtils.isValidRef(name)) {
           const parsed = k8sRefUtils.fromRef(name);
           name = parsed.name;
           // Ignore namespace on the name ref if one is set - using namespace/name format is legacy behavior
         }
-        
+
         // If no namespace is set, default to the agent's namespace
         if (!namespace) {
           namespace = agentNamespace;
@@ -262,6 +264,8 @@ function fromAgentFormDataToSandboxAgent(agentFormData: AgentFormData): SandboxA
             apiGroup: mcpServer.apiGroup,
             toolNames: mcpServer.toolNames,
             ...(requireApproval ? { requireApproval } : {}),
+            ...(mcpServer.allowedHeaders && mcpServer.allowedHeaders.length > 0 ? { allowedHeaders: mcpServer.allowedHeaders } : {}),
+            ...(mcpServer.sessionTokenLabel ? { sessionTokenLabel: mcpServer.sessionTokenLabel } : {}),
           },
         } as Tool;
       }

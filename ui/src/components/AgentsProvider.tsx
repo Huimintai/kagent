@@ -13,10 +13,12 @@ import type {
   AgentType,
   EnvVar,
   ContextConfig,
+  InlineSkill,
 } from "@/types";
 import { getModelConfigs } from "@/app/actions/modelConfigs";
 import { formUsesByoSections, formUsesDeclarativeSections } from "@/lib/agentFormLayout";
 import { isResourceNameValid } from "@/lib/utils";
+import { useAppConfig } from "@/lib/configStore";
 
 export interface ValidationErrors {
   name?: string;
@@ -38,7 +40,12 @@ export interface AgentFormData {
   name: string;
   namespace: string;
   description: string;
+  privateMode?: boolean;
   type?: AgentType;
+  // Category label
+  category?: string;
+  // Classification labels
+  toolType?: string;
   // Declarative fields
   systemPrompt?: string;
   modelName?: string;
@@ -46,6 +53,8 @@ export interface AgentFormData {
   stream?: boolean;
   // Skills
   skillRefs?: string[];
+  // Inline skills (prompt-only, no container)
+  inlineSkills?: InlineSkill[];
   // Memory
   memory?: {
     modelConfig?: string;
@@ -105,6 +114,7 @@ export function AgentsProvider({ children }: AgentsProviderProps) {
   const [loading, setLoading] = useState(true);
   const [tools, setTools] = useState<ToolsResponse[]>([]);
   const [models, setModels] = useState<ModelConfig[]>([]);
+  const { allowedNamespace } = useAppConfig();
 
   const fetchAgents = useCallback(async () => {
     try {
@@ -115,14 +125,20 @@ export function AgentsProvider({ children }: AgentsProviderProps) {
         throw new Error(agentsResult.error || "Failed to fetch agents");
       }
 
-      setAgents(agentsResult.data);
+      let agentData = agentsResult.data;
+      if (allowedNamespace) {
+        agentData = agentData.filter(
+          (a) => a.agent.metadata.namespace === allowedNamespace
+        );
+      }
+      setAgents(agentData);
       setError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "An unexpected error occurred");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [allowedNamespace]);
 
   const fetchModels = useCallback(async () => {
     try {

@@ -117,6 +117,8 @@ export const groupMcpToolsByServer = (tools: Tool[]): {
         kind: originalMcpServer?.kind || DEFAULT_MCP_KIND,
         toolNames: Array.from(toolNamesSet),
         ...(mergedApprovals.length > 0 ? { requireApproval: mergedApprovals } : {}),
+        ...(originalMcpServer?.allowedHeaders && originalMcpServer.allowedHeaders.length > 0 ? { allowedHeaders: originalMcpServer.allowedHeaders } : {}),
+        ...(originalMcpServer?.sessionTokenLabel ? { sessionTokenLabel: originalMcpServer.sessionTokenLabel } : {}),
       }
     };
   });
