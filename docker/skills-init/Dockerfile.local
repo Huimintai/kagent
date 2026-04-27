@@ -1,0 +1,5 @@
+### Runtime-only image for local builds
+### Expects pre-built krane binary at bin/krane
+FROM alpine:3.23
+RUN apk upgrade --no-cache && apk add --no-cache git
+COPY bin/krane /usr/local/bin/krane
