@@ -13,6 +13,8 @@ members = [
     "agentsts-core",
     "basic",
     "basic-openai-agent",
+    "claude-code-agent-sample",
+    "codex-agent-sample",
     "currency",
     "hitl-tools",
     "kagent-adk",
@@ -21,6 +23,7 @@ members = [
     "kagent-langgraph",
     "kagent-openai",
     "kagent-skills",
+    "kagent-sota-adapter",
     "kebab",
     "poem-flow",
     "research-crew",
@@ -767,6 +770,11 @@ wheels = [
 ]
 
 [[package]]
+name = "claude-code-agent-sample"
+version = "0.1.0"
+source = { editable = "samples/sota/claude_code_agent" }
+
+[[package]]
 name = "click"
 version = "8.2.1"
 source = { registry = "https://pypi.org/simple" }
@@ -785,6 +793,23 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/52/39/069100b84d7418bc358d81669d5748efb14b9cceacd2f9c75f550424132f/cloudpickle-3.1.1.tar.gz", hash = "sha256:b216fa8ae4019d5482a8ac3c95d8f6346115d8835911fd4aefd1a445e4242c64", size = 22113, upload-time = "2025-01-14T17:02:05.085Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/7e/e8/64c37fadfc2816a7701fa8a6ed8d87327c7d54eacfbfb6edab14a2f2be75/cloudpickle-3.1.1-py3-none-any.whl", hash = "sha256:c8c5a44295039331ee9dad40ba100a9c7297b6f988e50e87ccdf3765a668350e", size = 20992, upload-time = "2025-01-14T17:02:02.417Z" },
+]
+
+[[package]]
+name = "codex-agent-sample"
+version = "0.1.0"
+source = { editable = "samples/sota/codex_agent" }
+dependencies = [
+    { name = "kagent-adk" },
+    { name = "kagent-sota-adapter" },
+    { name = "uvicorn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "kagent-adk", editable = "packages/kagent-adk" },
+    { name = "kagent-sota-adapter", editable = "packages/kagent-sota-adapter" },
+    { name = "uvicorn", specifier = ">=0.20.0" },
 ]
 
 [[package]]
@@ -2549,6 +2574,46 @@ requires-dist = [
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.21.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
+]
+provides-extras = ["dev"]
+
+[[package]]
+name = "kagent-sota-adapter"
+version = "0.1.0"
+source = { editable = "packages/kagent-sota-adapter" }
+dependencies = [
+    { name = "a2a-sdk" },
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "kagent-adk" },
+    { name = "kagent-core" },
+    { name = "openai" },
+    { name = "pydantic" },
+    { name = "typing-extensions" },
+    { name = "uvicorn" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "a2a-sdk", specifier = ">=0.3.23" },
+    { name = "fastapi", specifier = ">=0.100.0" },
+    { name = "httpx", specifier = ">=0.25.0" },
+    { name = "kagent-adk", editable = "packages/kagent-adk" },
+    { name = "kagent-core", editable = "packages/kagent-core" },
+    { name = "openai", specifier = ">=1.0.0" },
+    { name = "pydantic", specifier = ">=2.0.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.21.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
+    { name = "typing-extensions", specifier = ">=4.0.0" },
+    { name = "uvicorn", specifier = ">=0.20.0" },
 ]
 provides-extras = ["dev"]
 

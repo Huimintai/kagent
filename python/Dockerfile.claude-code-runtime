@@ -1,0 +1,33 @@
+### Claude Code CLI Runtime Image
+FROM ghcr.io/astral-sh/uv:python3.13-trixie-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y build-essential curl nodejs npm && rm -rf /var/lib/apt/lists/*
+
+# Install Claude Code CLI
+RUN npm install -g @anthropic-ai/claude-code
+
+# Copy workspace files
+COPY pyproject.toml .python-version uv.lock README.md ./
+COPY packages/kagent-sota-adapter packages/kagent-sota-adapter
+COPY packages/kagent-core packages/kagent-core
+COPY packages/kagent-adk packages/kagent-adk
+COPY packages/kagent-skills packages/kagent-skills
+COPY packages/agentsts-adk packages/agentsts-adk
+COPY packages/agentsts-core packages/agentsts-core
+
+# Install Python dependencies
+RUN uv venv && uv sync --no-dev --package kagent-sota-adapter
+
+ENV VIRTUAL_ENV=/app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
+ENV PORT=8080
+ENV CLI_RUNTIME=claude-code
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+CMD ["python", "-m", "kagent.sota_adapter"]
