@@ -8,8 +8,10 @@ import { listPromptTemplates } from "@/app/actions/promptTemplates";
 import type { PromptTemplateSummary } from "@/types";
 import { Button } from "@/components/ui/button";
 import { LoadingState } from "@/components/LoadingState";
-import { ScrollText, Plus, ChevronRight } from "lucide-react";
+import { ScrollText, Plus, ChevronRight, Info } from "lucide-react";
 import { toast } from "sonner";
+import { useAppConfig } from "@/lib/configStore";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 
 const DEFAULT_PROMPTS_NAMESPACE = "kagent";
 
@@ -19,6 +21,7 @@ export default function PromptsPage() {
   const namespace = searchParams.get("namespace") ?? "";
   const [items, setItems] = useState<PromptTemplateSummary[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const { disablePromptLibrary } = useAppConfig();
 
   useEffect(() => {
     if (searchParams.get("namespace")) {
@@ -73,6 +76,15 @@ export default function PromptsPage() {
   return (
     <div className="min-h-screen p-8">
       <div className="max-w-6xl mx-auto">
+        {disablePromptLibrary && (
+          <Alert className="mb-6">
+            <Info className="h-4 w-4" />
+            <AlertTitle>Prompt Library Disabled</AlertTitle>
+            <AlertDescription>Prompt Library is not available in this environment.</AlertDescription>
+          </Alert>
+        )}
+        {!disablePromptLibrary && (
+        <>
         <header className="mb-8 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
           <div className="space-y-2">
             <h1 className="text-2xl font-bold">Prompt libraries</h1>
@@ -151,6 +163,8 @@ export default function PromptsPage() {
               </li>
             ))}
           </ul>
+        )}
+        </>
         )}
       </div>
     </div>

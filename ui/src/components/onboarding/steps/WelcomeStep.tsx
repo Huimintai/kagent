@@ -1,18 +1,40 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import KAgentLogoWithText from '@/components/kagent-logo-text';
+import { fetchOidcUser } from '@/lib/oidcUser';
 
 interface WelcomeStepProps {
     onNext: () => void;
 }
 
 export function WelcomeStep({ onNext }: WelcomeStepProps) {
+    const [userName, setUserName] = useState<string | null>(null);
+
+    useEffect(() => {
+        fetchOidcUser()
+            .then((user) => {
+                console.log('[WelcomeStep] fetchOidcUser result:', user);
+                setUserName(user?.email || null);
+            })
+            .catch((err) => {
+                console.log('[WelcomeStep] fetchOidcUser error:', err);
+            });
+    }, []);
+
     return (
         <>
-            <CardHeader className="items-center text-center pt-10 pb-6 border-b">
-                <KAgentLogoWithText className="h-20 w-auto mb-6" />
-                <CardTitle className="text-2xl mb-2">Bringing <span className="font-semibold text-primary">Agentic AI</span> to Cloud Native</CardTitle>
+            {userName && (
+                <div className="w-full flex justify-center pt-6">
+                    <div className="text-base text-muted-foreground font-medium">Welcome, <span className="text-primary font-semibold">{userName}</span></div>
+                </div>
+            )}
+            <div className="w-full text-center pt-6 pb-2 lg:hidden">
+                <h1 className="text-5xl font-bold text-primary tracking-tight">DBCI kagent Playground</h1>
+            </div>
+            <CardHeader className="items-center text-center pt-4 pb-6 border-b">
+                <KAgentLogoWithText className="h-10 w-auto mb-3" />
+                <CardTitle className="text-base mb-2">Bringing <span className="font-semibold text-primary">Agentic AI</span> to Cloud Native</CardTitle>
             </CardHeader>
 
             <CardContent className="px-8 pt-8 pb-6">

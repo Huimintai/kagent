@@ -16,32 +16,50 @@ import { MemoriesDialog } from "@/components/MemoriesDialog";
 import KagentLogo from "@/components/kagent-logo";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Brain, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
-import { k8sRefUtils } from "@/lib/k8sUtils";
+import { Brain, Eye, MoreHorizontal, Pencil, Trash2, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAppConfig, isEffectivelyProtectedCheck } from "@/lib/configStore";
+import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useUserStore } from "@/lib/userStore";
+import { LABEL_TOOL_TYPE, LABEL_CATEGORY } from "@/lib/constants";
 
 interface AgentCardProps {
   agentResponse: AgentResponse;
 }
 
-export function AgentCard({ agentResponse: { agent, model, modelProvider, deploymentReady, accepted } }: AgentCardProps) {
+export function AgentCard({ agentResponse }: AgentCardProps) {
+  const { agent, model, modelProvider, deploymentReady, accepted, private_mode, user_id } = agentResponse;
   const router = useRouter();
+  const currentUserId = useUserStore((state) => state.userId);
+  const { protectedAgentNames } = useAppConfig();
   const [memoriesOpen, setMemoriesOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-
-  const agentRef = k8sRefUtils.toRef(
-    agent.metadata.namespace || '',
-    agent.metadata.name || ''
-  );
 
   const isBYO = agent.spec?.type === "BYO";
   const byoImage = isBYO ? agent.spec?.byo?.deployment?.image : undefined;
   const isReady = accepted && deploymentReady;
 
+  const ownerId = user_id || agent.metadata.annotations?.["kagent.dev/user-id"] || "";
+  const isOwner = ownerId === currentUserId;
+  const privateMode = typeof private_mode === "boolean"
+    ? private_mode
+    : agent.metadata.annotations?.["kagent.dev/private-mode"] !== "false";
+  const protectedAgent = isEffectivelyProtectedCheck(protectedAgentNames, agent.metadata.name || "", isOwner);
+
+  const category = agent.metadata.labels?.[LABEL_CATEGORY];
+  const toolType = agent.metadata.labels?.[LABEL_TOOL_TYPE];
+  const hasBadges = !!(toolType || category);
+
   const handleEditClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    router.push(`/agents/new?edit=true&name=${agent.metadata.name}&namespace=${agent.metadata.namespace}`);
+    if (isOwner) {
+      router.push(`/agents/new?edit=true&name=${agent.metadata.name}&namespace=${agent.metadata.namespace}`);
+      return;
+    }
+
+    router.push(`/agents/new?edit=true&readonly=true&name=${agent.metadata.name}&namespace=${agent.metadata.namespace}`);
   };
 
   const getStatusInfo = () => {
@@ -72,7 +90,17 @@ export function AgentCard({ agentResponse: { agent, model, modelProvider, deploy
       <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2 relative z-30">
         <CardTitle className="flex items-center gap-2 flex-1 min-w-0">
           <KagentLogo className="h-5 w-5 flex-shrink-0" />
-          <span className="truncate">{agentRef}</span>
+          <span className="truncate">{agent.metadata.name}</span>
+          {protectedAgent && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Shield className="h-3 w-3 flex-shrink-0 text-muted-foreground" />
+              </TooltipTrigger>
+              <TooltipContent>
+                This agent is protected and cannot be edited or deleted.
+              </TooltipContent>
+            </Tooltip>
+          )}
         </CardTitle>
         <div className="relative z-30 opacity-0 group-hover:opacity-100 transition-opacity">
           <DropdownMenu>
@@ -91,8 +119,8 @@ export function AgentCard({ agentResponse: { agent, model, modelProvider, deploy
                 onClick={handleEditClick}
                 className="cursor-pointer"
               >
-                <Pencil className="mr-2 h-4 w-4" />
-                Edit
+                {isOwner ? <Pencil className="mr-2 h-4 w-4" /> : <Eye className="mr-2 h-4 w-4" />}
+                {isOwner ? "Edit" : "View"}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={(e) => {
@@ -107,12 +135,13 @@ export function AgentCard({ agentResponse: { agent, model, modelProvider, deploy
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                onClick={(e) => {
+                onClick={protectedAgent ? undefined : (e) => {
                   e.preventDefault();
                   e.stopPropagation();
                   setDeleteOpen(true);
                 }}
-                className="cursor-pointer text-red-500 focus:text-red-500"
+                className={cn("cursor-pointer text-red-500 focus:text-red-500", protectedAgent && "opacity-50 cursor-not-allowed")}
+                disabled={protectedAgent}
               >
                 <Trash2 className="mr-2 h-4 w-4" />
                 Delete
@@ -122,14 +151,25 @@ export function AgentCard({ agentResponse: { agent, model, modelProvider, deploy
         </div>
       </CardHeader>
       <CardContent className="flex flex-col justify-between h-32 relative z-10">
-        <p className="text-sm text-muted-foreground line-clamp-3 overflow-hidden">
+        {hasBadges && (
+          <div className="flex flex-wrap gap-1 mb-1">
+            {toolType && <Badge variant="outline" className="text-[10px] capitalize">{toolType}</Badge>}
+            {category && <Badge variant="outline" className="text-[10px] capitalize">{category}</Badge>}
+          </div>
+        )}
+        <p className={cn("text-sm text-muted-foreground overflow-hidden", hasBadges ? "line-clamp-2" : "line-clamp-3")}>
           {agent.spec.description}
         </p>
-        <div className="mt-4 flex items-center text-xs text-muted-foreground">
+        <div className="mt-4 flex items-center justify-between gap-2 text-xs text-muted-foreground">
           {isBYO ? (
             <span title={byoImage} className="truncate">Image: {byoImage}</span>
           ) : (
             <span className="truncate">{modelProvider} ({model})</span>
+          )}
+          {privateMode && (
+            <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-800 dark:bg-slate-700 dark:text-slate-100">
+              Private
+            </span>
           )}
         </div>
       </CardContent>
@@ -160,6 +200,7 @@ export function AgentCard({ agentResponse: { agent, model, modelProvider, deploy
         namespace={agent.metadata.namespace || ''}
         externalOpen={deleteOpen}
         onExternalOpenChange={setDeleteOpen}
+        disabled={protectedAgent}
       />
 
       <MemoriesDialog

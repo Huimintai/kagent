@@ -23,7 +23,7 @@ export function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const userId = useUserStore((state) => state.userId);
   const clearLoginSession = useUserStore((state) => state.clearLoginSession);
-  const { disableModelCreation, disableMcpServerCreation } = useAppConfig();
+  const { disableModelCreation, disableMcpServerCreation, disablePromptLibrary, disableSchedules } = useAppConfig();
 
   const toggleMenu = () => {
     setIsMenuOpen(!isMenuOpen);
@@ -106,17 +106,31 @@ export function Header() {
                     </Link>
                   )}
                 </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href="/prompts/new" className="gap-2 cursor-pointer w-full">
-                    <ScrollText className="h-4 w-4" />
-                    New prompt library
-                  </Link>
+                <DropdownMenuItem asChild={!disablePromptLibrary} disabled={disablePromptLibrary}>
+                  {disablePromptLibrary ? (
+                    <span className="gap-2 w-full flex items-center">
+                      <Ban className="h-4 w-4" />
+                      New prompt library
+                    </span>
+                  ) : (
+                    <Link href="/prompts/new" className="gap-2 cursor-pointer w-full">
+                      <ScrollText className="h-4 w-4" />
+                      New prompt library
+                    </Link>
+                  )}
                 </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href="/schedules/new" className="gap-2 cursor-pointer w-full">
-                    <Clock className="h-4 w-4" />
-                    New Schedule
-                  </Link>
+                <DropdownMenuItem asChild={!disableSchedules} disabled={disableSchedules}>
+                  {disableSchedules ? (
+                    <span className="gap-2 w-full flex items-center">
+                      <Ban className="h-4 w-4" />
+                      New Schedule
+                    </span>
+                  ) : (
+                    <Link href="/schedules/new" className="gap-2 cursor-pointer w-full">
+                      <Clock className="h-4 w-4" />
+                      New Schedule
+                    </Link>
+                  )}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -154,17 +168,31 @@ export function Header() {
                     MCP Servers
                   </Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href="/prompts" className="gap-2 cursor-pointer w-full">
-                    <ScrollText className="h-4 w-4" />
-                    Prompt Library
-                  </Link>
+                <DropdownMenuItem asChild={!disablePromptLibrary} disabled={disablePromptLibrary}>
+                  {disablePromptLibrary ? (
+                    <span className="gap-2 w-full flex items-center">
+                      <Ban className="h-4 w-4" />
+                      Prompt Library
+                    </span>
+                  ) : (
+                    <Link href="/prompts" className="gap-2 cursor-pointer w-full">
+                      <ScrollText className="h-4 w-4" />
+                      Prompt Library
+                    </Link>
+                  )}
                 </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href="/schedules" className="gap-2 cursor-pointer w-full">
-                    <Clock className="h-4 w-4" />
-                    Schedules
-                  </Link>
+                <DropdownMenuItem asChild={!disableSchedules} disabled={disableSchedules}>
+                  {disableSchedules ? (
+                    <span className="gap-2 w-full flex items-center">
+                      <Ban className="h-4 w-4" />
+                      Schedules
+                    </span>
+                  ) : (
+                    <Link href="/schedules" className="gap-2 cursor-pointer w-full">
+                      <Clock className="h-4 w-4" />
+                      Schedules
+                    </Link>
+                  )}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -241,17 +269,31 @@ export function Header() {
                       MCP Servers
                     </Link>
                   </DropdownMenuItem>
-                  <DropdownMenuItem asChild onClick={handleMobileLinkClick}>
-                    <Link href="/prompts" className="gap-2 cursor-pointer w-full">
-                      <ScrollText className="h-4 w-4" />
-                      Prompt Library
-                    </Link>
+                  <DropdownMenuItem asChild={!disablePromptLibrary} disabled={disablePromptLibrary} onClick={disablePromptLibrary ? undefined : handleMobileLinkClick}>
+                    {disablePromptLibrary ? (
+                      <span className="gap-2 w-full flex items-center">
+                        <Ban className="h-4 w-4" />
+                        Prompt Library
+                      </span>
+                    ) : (
+                      <Link href="/prompts" className="gap-2 cursor-pointer w-full">
+                        <ScrollText className="h-4 w-4" />
+                        Prompt Library
+                      </Link>
+                    )}
                   </DropdownMenuItem>
-                  <DropdownMenuItem asChild onClick={handleMobileLinkClick}>
-                    <Link href="/schedules" className="gap-2 cursor-pointer w-full">
-                      <Clock className="h-4 w-4" />
-                      Schedules
-                    </Link>
+                  <DropdownMenuItem asChild={!disableSchedules} disabled={disableSchedules} onClick={disableSchedules ? undefined : handleMobileLinkClick}>
+                    {disableSchedules ? (
+                      <span className="gap-2 w-full flex items-center">
+                        <Ban className="h-4 w-4" />
+                        Schedules
+                      </span>
+                    ) : (
+                      <Link href="/schedules" className="gap-2 cursor-pointer w-full">
+                        <Clock className="h-4 w-4" />
+                        Schedules
+                      </Link>
+                    )}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -298,17 +340,31 @@ export function Header() {
                       </Link>
                     )}
                   </DropdownMenuItem>
-                  <DropdownMenuItem asChild onClick={handleMobileLinkClick}>
-                    <Link href="/prompts/new" className="gap-2 cursor-pointer w-full">
-                      <ScrollText className="h-4 w-4" />
-                      New prompt library
-                    </Link>
+                  <DropdownMenuItem asChild={!disablePromptLibrary} disabled={disablePromptLibrary} onClick={disablePromptLibrary ? undefined : handleMobileLinkClick}>
+                    {disablePromptLibrary ? (
+                      <span className="gap-2 w-full flex items-center">
+                        <Ban className="h-4 w-4" />
+                        New prompt library
+                      </span>
+                    ) : (
+                      <Link href="/prompts/new" className="gap-2 cursor-pointer w-full">
+                        <ScrollText className="h-4 w-4" />
+                        New prompt library
+                      </Link>
+                    )}
                   </DropdownMenuItem>
-                  <DropdownMenuItem asChild onClick={handleMobileLinkClick}>
-                    <Link href="/schedules/new" className="gap-2 cursor-pointer w-full">
-                      <Clock className="h-4 w-4" />
-                      New Schedule
-                    </Link>
+                  <DropdownMenuItem asChild={!disableSchedules} disabled={disableSchedules} onClick={disableSchedules ? undefined : handleMobileLinkClick}>
+                    {disableSchedules ? (
+                      <span className="gap-2 w-full flex items-center">
+                        <Ban className="h-4 w-4" />
+                        New Schedule
+                      </span>
+                    ) : (
+                      <Link href="/schedules/new" className="gap-2 cursor-pointer w-full">
+                        <Clock className="h-4 w-4" />
+                        New Schedule
+                      </Link>
+                    )}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>

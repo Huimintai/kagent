@@ -28,10 +28,10 @@ interface OnboardingStateData {
 }
 
 export const K8S_AGENT_DEFAULTS = {
-    name: "my-first-k8s-agent",
+    name: "sap-k8s-assistant",
     namespace: "kagent",
-    description: "This agent can interact with the Kubernetes API to get information about the cluster.",
-    instructions: `You're a friendly and helpful agent that uses Kubernetes tools to answer users questions about the cluster.
+    description: "DBCI kagent Playground Kubernetes Assistant for cluster operations.",
+    instructions: `You're a professional DBCI kagent Playground assistant that uses Kubernetes tools to answer users questions about the cluster.
 
 # Instructions
 - If user question is unclear, ask for clarification before running any tools
@@ -151,7 +151,7 @@ export function OnboardingWizard({ onOnboardingComplete, onSkip }: OnboardingWiz
   const renderCurrentStep = () => {
       switch (currentStep) {
           case 0:
-              return <WelcomeStep onNext={handleNextFromWelcome} />;
+              return <WelcomeStep onNext={onOnboardingComplete} />;
           case 1:
               return <ModelConfigStep
                           existingModels={existingModels}
@@ -200,18 +200,40 @@ export function OnboardingWizard({ onOnboardingComplete, onSkip }: OnboardingWiz
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-background p-4">
-      <Card className="w-full max-w-2xl relative">
-        {renderCurrentStep()}
-        <div className="flex justify-between items-center px-6 pb-4 pt-2 w-full">
-          <button
-            onClick={onSkip}
-            className="text-sm text-muted-foreground hover:text-primary underline cursor-pointer"
-          >
-            Skip wizard
-          </button>
+    <div className="flex min-h-screen">
+      {/* Left panel - DBCI brand area */}
+      <div
+        className="hidden lg:flex w-2/5 flex-col items-center justify-center gap-4 px-10"
+        style={{background: "linear-gradient(160deg, #002d6e 0%, #003d8f 40%, #0057c2 100%)"}}
+      >
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center">
+            <svg viewBox="0 0 40 40" className="w-8 h-8 fill-white"><rect x="4" y="4" width="14" height="14" rx="2"/><rect x="22" y="4" width="14" height="14" rx="2" opacity="0.6"/><rect x="4" y="22" width="14" height="14" rx="2" opacity="0.6"/><rect x="22" y="22" width="14" height="14" rx="2" opacity="0.3"/></svg>
+          </div>
         </div>
-      </Card>
+        <h1 className="text-3xl font-bold text-white text-center leading-tight">DBCI kagent<br/>Playground</h1>
+        <p className="text-blue-200 text-sm text-center">Bringing <span className="text-white font-semibold">Agentic AI</span> to Cloud Native</p>
+        <div className="mt-6 flex gap-2">
+          <div className="w-2 h-2 rounded-full bg-white"/>
+          <div className="w-2 h-2 rounded-full bg-white/40"/>
+          <div className="w-2 h-2 rounded-full bg-white/40"/>
+        </div>
+      </div>
+
+      {/* Right panel - wizard card */}
+      <div className="flex flex-1 items-center justify-center bg-white p-6">
+        <Card className="w-full max-w-xl relative shadow-lg border border-gray-100">
+          {renderCurrentStep()}
+          <div className="flex justify-between items-center px-6 pb-4 pt-2 w-full">
+            <button
+              onClick={onSkip}
+              className="text-sm text-muted-foreground hover:text-primary underline cursor-pointer"
+            >
+              Skip wizard
+            </button>
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }
