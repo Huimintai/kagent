@@ -53,7 +53,8 @@ func (a *ProxyAuthenticator) Authenticate(ctx context.Context, reqHeaders http.H
 				Agent:  auth.Agent{ID: agentID},
 				Claims: rawClaims,
 			},
-			authHeader: authHeader,
+			authHeader:      authHeader,
+			mcpTokenHeaders: collectMCPTokenHeaders(reqHeaders),
 		}, nil
 	}
 
@@ -81,13 +82,23 @@ func (a *ProxyAuthenticator) Authenticate(ctx context.Context, reqHeaders http.H
 				ID: agentID,
 			},
 		},
-		authHeader: authHeader,
+		authHeader:      authHeader,
+		mcpTokenHeaders: collectMCPTokenHeaders(reqHeaders),
 	}, nil
 }
 
 func (a *ProxyAuthenticator) UpstreamAuth(r *http.Request, session auth.Session, upstreamPrincipal auth.Principal) error {
-	if simpleSession, ok := session.(*SimpleSession); ok && simpleSession.authHeader != "" {
-		r.Header.Set("Authorization", simpleSession.authHeader)
+	if session != nil && session.Principal().User.ID != "" {
+		r.Header.Set("X-User-Id", session.Principal().User.ID)
+	}
+
+	if simpleSession, ok := session.(*SimpleSession); ok {
+		if simpleSession.authHeader != "" {
+			r.Header.Set("Authorization", simpleSession.authHeader)
+		}
+		for key, value := range simpleSession.mcpTokenHeaders {
+			r.Header.Set(key, value)
+		}
 	}
 	return nil
 }
