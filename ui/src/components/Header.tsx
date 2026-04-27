@@ -4,8 +4,9 @@ import Link from "next/link";
 import { Button } from "./ui/button";
 import KAgentLogoWithText from "./kagent-logo-text";
 import KagentLogo from "./kagent-logo";
-import { Plus, Menu, X, ChevronDown, Brain, Server, Eye, Hammer, HomeIcon, LogOut, Ban } from "lucide-react";
+import { Plus, Menu, X, ChevronDown, Brain, Server, Eye, Hammer, HomeIcon, LogOut, Ban, ScrollText, Clock } from "lucide-react";
 import { DISABLE_MODEL_CREATION } from "@/lib/appConfig";
+import { useAppConfig } from "@/lib/configStore";
 import { Identicon } from "./Identicon";
 import { ThemeToggle } from "./ThemeToggle";
 import { useUserStore } from "@/lib/userStore";
@@ -22,6 +23,7 @@ export function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const userId = useUserStore((state) => state.userId);
   const clearLoginSession = useUserStore((state) => state.clearLoginSession);
+  const { disableMcpServerCreation, disablePromptLibrary, disableScheduledRuns } = useAppConfig();
 
   const toggleMenu = () => {
     setIsMenuOpen(!isMenuOpen);
@@ -97,9 +99,25 @@ export function Header() {
                     New MCP Server
                   </Link>
                 </DropdownMenuItem>
+                {!disablePromptLibrary && (
+                  <DropdownMenuItem asChild>
+                    <Link href="/prompts/new" className="gap-2 cursor-pointer w-full">
+                      <ScrollText className="h-4 w-4" />
+                      New Prompt Template
+                    </Link>
+                  </DropdownMenuItem>
+                )}
+                {!disableScheduledRuns && (
+                  <DropdownMenuItem asChild>
+                    <Link href="/schedules/new" className="gap-2 cursor-pointer w-full">
+                      <Clock className="h-4 w-4" />
+                      New Schedule
+                    </Link>
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
-            
+
             {/* View Dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -133,6 +151,22 @@ export function Header() {
                     MCP Servers
                   </Link>
                 </DropdownMenuItem>
+                {!disablePromptLibrary && (
+                  <DropdownMenuItem asChild>
+                    <Link href="/prompts" className="gap-2 cursor-pointer w-full">
+                      <ScrollText className="h-4 w-4" />
+                      Prompt Library
+                    </Link>
+                  </DropdownMenuItem>
+                )}
+                {!disableScheduledRuns && (
+                  <DropdownMenuItem asChild>
+                    <Link href="/schedules" className="gap-2 cursor-pointer w-full">
+                      <Clock className="h-4 w-4" />
+                      Schedules
+                    </Link>
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
 
@@ -207,6 +241,22 @@ export function Header() {
                       MCP Servers
                     </Link>
                   </DropdownMenuItem>
+                  {!disablePromptLibrary && (
+                    <DropdownMenuItem asChild onClick={handleMobileLinkClick}>
+                      <Link href="/prompts" className="gap-2 cursor-pointer w-full">
+                        <ScrollText className="h-4 w-4" />
+                        Prompt Library
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {!disableScheduledRuns && (
+                    <DropdownMenuItem asChild onClick={handleMobileLinkClick}>
+                      <Link href="/schedules" className="gap-2 cursor-pointer w-full">
+                        <Clock className="h-4 w-4" />
+                        Schedules
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
 
@@ -245,6 +295,22 @@ export function Header() {
                       New MCP Server
                     </Link>
                   </DropdownMenuItem>
+                  {!disablePromptLibrary && (
+                    <DropdownMenuItem asChild onClick={handleMobileLinkClick}>
+                      <Link href="/prompts/new" className="gap-2 cursor-pointer w-full">
+                        <ScrollText className="h-4 w-4" />
+                        New Prompt Template
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {!disableScheduledRuns && (
+                    <DropdownMenuItem asChild onClick={handleMobileLinkClick}>
+                      <Link href="/schedules/new" className="gap-2 cursor-pointer w-full">
+                        <Clock className="h-4 w-4" />
+                        New Schedule
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
               

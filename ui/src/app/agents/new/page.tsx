@@ -24,7 +24,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { isAgentProtected, ALLOWED_NAMESPACE } from "@/lib/appConfig";
+import { isAgentProtected, ALLOWED_NAMESPACE, useAppConfig } from "@/lib/appConfig";
 
 const PRIVATE_MODE_ANNOTATION = "kagent.dev/private-mode";
 
@@ -67,6 +67,7 @@ const DEFAULT_SYSTEM_PROMPT = `You're a helpful agent, made by the kagent team.
 function AgentPageContent({ isEditMode, isViewMode, agentName, agentNamespace }: AgentPageContentProps) {
   const router = useRouter();
   const { models, loading, error, createNewAgent, updateAgent, getAgent, validateAgentData } = useAgents();
+  const { disableByoAgentCreation, skillCliPresets } = useAppConfig();
 
   type SelectedModelType = Pick<ModelConfig, 'ref' | 'model'>;
 
@@ -491,7 +492,7 @@ function AgentPageContent({ isEditMode, isViewMode, agentName, agentNamespace }:
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="Declarative">Declarative</SelectItem>
-                      <SelectItem value="BYO">BYO</SelectItem>
+                      <SelectItem value="BYO" disabled={disableByoAgentCreation}>{disableByoAgentCreation ? "BYO (disabled)" : "BYO"}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -822,6 +823,33 @@ function AgentPageContent({ isEditMode, isViewMode, agentName, agentNamespace }:
                         <p className="text-xs mb-2 block text-muted-foreground">
                           Add skills container images. Each skill will be pulled and mounted for your agent to use.
                         </p>
+                        {skillCliPresets.length > 0 && (
+                          <div className="mb-3">
+                            <Label className="text-xs text-muted-foreground mb-1 block">Quick add from presets:</Label>
+                            <div className="flex flex-wrap gap-2">
+                              {skillCliPresets.map((preset) => {
+                                const alreadyAdded = state.skillRefs.some(r => r === preset.ref);
+                                return (
+                                  <Button
+                                    key={preset.ref}
+                                    variant="outline"
+                                    size="sm"
+                                    title={preset.description || preset.ref}
+                                    disabled={isFormDisabled || alreadyAdded}
+                                    onClick={() => {
+                                      setState(prev => ({
+                                        ...prev,
+                                        skillRefs: [...prev.skillRefs, preset.ref]
+                                      }));
+                                    }}
+                                  >
+                                    <PlusCircle className="h-3 w-3 mr-1" /> {preset.label}
+                                  </Button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
                         <div className="space-y-2">
                           {(state.skillRefs || []).map((ref, idx) => {
                             const isDuplicate = ref.trim() && state.skillRefs.filter(r => r.trim() === ref.trim()).length > 1;

@@ -13,6 +13,7 @@ spec:
   template:
     metadata:
       annotations:
+        checksum/ui-config: {{ include (print $.Template.BasePath "/ui-configmap.yaml") . | sha256sum }}
         {{- with .Values.ui.podAnnotations | default .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -57,6 +58,9 @@ spec:
             {{- with .Values.ui.env }}
               {{- toYaml . | nindent 12 }}
             {{- end }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "kagent.fullname" . }}-ui-config
           ports:
             - name: http
               containerPort: {{ .Values.ui.service.ports.targetPort }}

@@ -260,6 +260,28 @@ ui:
   # -- Node labels to match for `Pod` [scheduling](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/).
   nodeSelector: {}
 
+  featureFlags:
+    # -- Lock the UI to a single namespace. Empty string means all namespaces are visible.
+    allowedNamespace: ""
+    # -- Disable the "New Model" button and show a banner message.
+    disableModelCreation: "false"
+    # -- Message shown when model creation is disabled.
+    modelCreationDisabledMessage: "Model creation is disabled. Please use the pre-defined models provided by your administrator."
+    # -- Disable MCP server creation in the UI.
+    disableMcpServerCreation: "true"
+    # -- Disable BYO (Bring Your Own) agent type in the UI.
+    disableByoAgentCreation: "true"
+    # -- Disable the Prompt Library feature in the UI.
+    disablePromptLibrary: "false"
+    # -- Disable the Scheduled Runs (cronjob) feature in the UI.
+    disableScheduledRuns: "false"
+    # -- Comma-separated list of agent names that cannot be edited or deleted.
+    protectedAgents: ""
+  # -- Preset CLI container images shown in the agent creation form.
+  # Users can select these instead of typing image refs manually.
+  # Format: JSON array of objects with label, description, and ref fields.
+  skillCliPresets: '[{"label":"kubectl","description":"Kubernetes CLI v1.35.4","ref":"hanaservice-dev.common.repositories.cloud.sap/cli-tools/kubectl:v1.35.4"},{"label":"helm","description":"Helm chart management v4.1.4","ref":"hanaservice-dev.common.repositories.cloud.sap/cli-tools/helm:v4.1.4"},{"label":"istioctl","description":"Istio service mesh CLI 1.29.2","ref":"hanaservice-dev.common.repositories.cloud.sap/cli-tools/istioctl:1.29.2"},{"label":"velero","description":"Backup and restore v1.18.0","ref":"hanaservice-dev.common.repositories.cloud.sap/cli-tools/velero:v1.18.0"},{"label":"github","description":"GitHub CLI (gh) v2.74.0","ref":"hanaservice-dev.common.repositories.cloud.sap/cli-tools/gh:2.74.0"}]'
+
 # ==============================================================================
 # LLM PROVIDERS CONFIGURATION
 # ==============================================================================
