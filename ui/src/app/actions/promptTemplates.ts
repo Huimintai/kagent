@@ -51,11 +51,12 @@ export async function updatePromptTemplate(
   data: Record<string, string>,
 ): Promise<BaseResponse<PromptTemplateDetail>> {
   try {
+    const body: { data: Record<string, string> } = { data };
     const res = await fetchApi<BaseResponse<PromptTemplateDetail>>(
       `/prompttemplates/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`,
       {
         method: "PUT",
-        body: JSON.stringify({ data }),
+        body: JSON.stringify(body),
       },
     );
     revalidatePath("/prompts");

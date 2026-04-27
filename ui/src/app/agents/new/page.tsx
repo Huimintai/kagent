@@ -4,9 +4,9 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Brain, Loader2, Settings2, PlusCircle, Trash2, Layers } from "lucide-react";
+import { Brain, Loader2, Settings2, PlusCircle, Trash2, Layers, Package } from "lucide-react";
 import { formAgentTypeFromApi, formUsesByoSections, formUsesDeclarativeSections } from "@/lib/agentFormLayout";
-import { ModelConfig, AgentType, ContextConfig } from "@/types";
+import { ModelConfig, AgentType, ContextConfig, InlineSkill } from "@/types";
 import { SystemPromptSection } from "@/components/create/SystemPromptSection";
 import { newPromptSourceRow, type PromptSourceRow } from "@/lib/promptSourceRow";
 import { ModelSelectionSection } from "@/components/create/ModelSelectionSection";
@@ -22,9 +22,16 @@ import { AgentFormData } from "@/components/AgentsProvider";
 import { Tool, EnvVar } from "@/types";
 import { toast } from "sonner";
 import { NamespaceCombobox } from "@/components/NamespaceCombobox";
+import { CategoryCombobox } from "@/components/CategoryCombobox";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAppConfig, isAgentProtectedCheck } from "@/lib/configStore";
+import { LABEL_TOOL_TYPE, LABEL_CATEGORY } from "@/lib/constants";
+
+const PRIVATE_MODE_ANNOTATION = "kagent.dev/private-mode";
+
 interface ValidationErrors {
   name?: string;
   namespace?: string;
@@ -43,6 +50,7 @@ interface ValidationErrors {
 
 interface AgentPageContentProps {
   isEditMode: boolean;
+  isViewMode: boolean;
   agentName: string | null;
   agentNamespace: string | null;
 }
@@ -61,9 +69,10 @@ const DEFAULT_SYSTEM_PROMPT = `You're a helpful agent, made by the kagent team.
     - If you created any artifacts such as files or resources, you will include those in your response as well`
 
 // Inner component that uses useSearchParams, wrapped in Suspense
-function AgentPageContent({ isEditMode, agentName, agentNamespace }: AgentPageContentProps) {
+function AgentPageContent({ isEditMode, isViewMode, agentName, agentNamespace }: AgentPageContentProps) {
   const router = useRouter();
   const { models, loading, error, createNewAgent, updateAgent, getAgent, validateAgentData } = useAgents();
+  const { allowedNamespace, disableByoAgentCreation, disableSandboxCreation, disableCliContainers, protectedAgentNames, skillCliPresets } = useAppConfig();
 
   type SelectedModelType = ModelConfig;
 
@@ -71,6 +80,9 @@ function AgentPageContent({ isEditMode, agentName, agentNamespace }: AgentPageCo
     name: string;
     namespace: string;
     description: string;
+    privateMode: boolean;
+    category: string;
+    toolType: string;
     agentType: AgentType;
     systemPrompt: string;
     selectedModel: SelectedModelType | null;
@@ -78,6 +90,7 @@ function AgentPageContent({ isEditMode, agentName, agentNamespace }: AgentPageCo
     memoryTtlDays: string;
     selectedTools: Tool[];
     skillRefs: string[];
+    inlineSkills: InlineSkill[];
     byoImage: string;
     byoCmd: string;
     byoArgs: string;
@@ -96,15 +109,19 @@ function AgentPageContent({ isEditMode, agentName, agentNamespace }: AgentPageCo
 
   const [state, setState] = useState<FormState>({
     name: "",
-    namespace: "default",
+    namespace: allowedNamespace || "default",
     description: "",
+    privateMode: true,
+    category: "",
+    toolType: "",
     agentType: "Declarative",
     systemPrompt: isEditMode ? "" : DEFAULT_SYSTEM_PROMPT,
     selectedModel: null,
     selectedMemoryModel: null,
     memoryTtlDays: "",
     selectedTools: [],
-    skillRefs: [""],
+    skillRefs: [],
+    inlineSkills: [],
     byoImage: "",
     byoCmd: "",
     byoArgs: "",
@@ -120,6 +137,13 @@ function AgentPageContent({ isEditMode, agentName, agentNamespace }: AgentPageCo
     isLoading: isEditMode,
     errors: {},
   });
+
+  // Sync namespace when allowedNamespace loads asynchronously
+  useEffect(() => {
+    if (allowedNamespace && !isEditMode) {
+      setState(prev => prev.namespace === allowedNamespace ? prev : { ...prev, namespace: allowedNamespace });
+    }
+  }, [allowedNamespace, isEditMode]);
 
   const useDeclarativeAgentFields = formUsesDeclarativeSections(state.agentType, state.byoImage);
   const showByoFields = formUsesByoSections(state.agentType, state.byoImage);
@@ -151,6 +175,9 @@ function AgentPageContent({ isEditMode, agentName, agentNamespace }: AgentPageCo
     [state.promptSourceRows],
   );
 
+  const isFormDisabled = state.isSubmitting || state.isLoading || isViewMode;
+
+
   // Fetch existing agent data if in edit mode
   useEffect(() => {
     const fetchAgentData = async () => {
@@ -164,6 +191,13 @@ function AgentPageContent({ isEditMode, agentName, agentNamespace }: AgentPageCo
             setState(prev => ({ ...prev, isLoading: false }));
             return;
           }
+
+          if (isAgentProtectedCheck(protectedAgentNames, agentResponse.agent.metadata.name || "")) {
+            toast.error("This agent is protected and cannot be edited.");
+            router.push("/agents");
+            return;
+          }
+
           const agent = agentResponse.agent;
           if (agent) {
             try {
@@ -173,6 +207,9 @@ function AgentPageContent({ isEditMode, agentName, agentNamespace }: AgentPageCo
                 namespace: agent.metadata.namespace || "",
                 description: agent.spec?.description || "",
                 agentType: formAgentTypeFromApi(agent.spec.type, agentResponse.workloadMode),
+                privateMode: agentResponse.private_mode ?? (agent.metadata.annotations?.[PRIVATE_MODE_ANNOTATION] === "true"),
+                category: agent.metadata.labels?.[LABEL_CATEGORY] || "",
+                toolType: agent.metadata.labels?.[LABEL_TOOL_TYPE] || "",
               };
               const useDeclarativeForm = agent.spec.type === "Declarative";
               if (useDeclarativeForm) {
@@ -195,7 +232,8 @@ function AgentPageContent({ isEditMode, agentName, agentNamespace }: AgentPageCo
                   promptSourceRows: srcRows.length > 0 ? srcRows : [newPromptSourceRow()],
                   selectedTools: (decl?.tools && agentResponse.tools) ? agentResponse.tools : [],
                   selectedModel: agentResponse.modelConfigRef ? { ref: agentResponse.modelConfigRef, spec: { model: agentResponse.model || "", provider: "" } } : null,
-                  skillRefs: (agent.spec?.skills?.refs && agent.spec.skills.refs.length > 0) ? agent.spec.skills.refs : [""],
+                  inlineSkills: agent.spec?.declarative?.inlineSkills || [],
+                  skillRefs: agent.spec?.skills?.refs || [],
                   stream: decl?.stream ?? false,
                   selectedMemoryModel: memoryModelConfig ? { ref: memoryModelConfig, spec: { model: memorySpec?.modelConfig || "", provider: "" } } : null,
                   memoryTtlDays: memorySpec?.ttlDays ? String(memorySpec.ttlDays) : "",
@@ -246,7 +284,7 @@ function AgentPageContent({ isEditMode, agentName, agentNamespace }: AgentPageCo
     };
 
     void fetchAgentData();
-  }, [isEditMode, agentName, agentNamespace, getAgent]);
+  }, [isEditMode, agentName, agentNamespace, getAgent, protectedAgentNames]);
 
   const isValidContainerImage = (image: string): boolean => {
     if (!image.trim()) return false;
@@ -279,28 +317,48 @@ function AgentPageContent({ isEditMode, agentName, agentNamespace }: AgentPageCo
 
     const newErrors = validateAgentData(formData);
 
-    if (useDeclarativeAgentFields && state.skillRefs && state.skillRefs.length > 0) {
-      // Filter out empty/whitespace entries first - if all are empty, treat as "no skills"
-      const nonEmptyRefs = state.skillRefs.filter(ref => ref.trim());
-      
-      // Only validate if there are actual skill references
-      if (nonEmptyRefs.length > 0) {
-        // Check for invalid image formats
-        const invalidRefs = nonEmptyRefs.filter(ref => !isValidContainerImage(ref));
-        if (invalidRefs.length > 0) {
-          newErrors.skills = `Invalid container image format: ${invalidRefs[0]}`;
-        } else {
-          // Check for duplicates (case-insensitive, trimmed)
-          const trimmedRefs = nonEmptyRefs.map(ref => ref.trim().toLowerCase());
-          const duplicates = trimmedRefs.filter((ref, index) => trimmedRefs.indexOf(ref) !== index);
-          if (duplicates.length > 0) {
-            // Find the first duplicate in the original array for error message
-            const dupIndex = trimmedRefs.findIndex((ref, idx) => trimmedRefs.indexOf(ref) !== idx);
-            newErrors.skills = `Duplicate skill detected: ${nonEmptyRefs[dupIndex]}`;
-          }
+    if (state.agentType === "Declarative" && state.inlineSkills.length > 0) {
+      for (const skill of state.inlineSkills) {
+        if (!skill.name.trim() && !skill.description.trim() && !skill.content.trim()) continue; // empty entry, skip
+        if (!skill.name.trim()) {
+          newErrors.skills = "Each skill must have a name";
+          break;
+        }
+        if (!skill.description.trim()) {
+          newErrors.skills = `Skill "${skill.name}" must have a description`;
+          break;
+        }
+        if (!skill.content.trim()) {
+          newErrors.skills = `Skill "${skill.name}" must have content`;
+          break;
         }
       }
-      // If all refs are empty/whitespace, that's fine - no skills will be included
+      // Check for duplicate names
+      if (!newErrors.skills) {
+        const names = state.inlineSkills.filter(s => s.name.trim()).map(s => s.name.trim().toLowerCase());
+        const dupName = names.find((n, i) => names.indexOf(n) !== i);
+        if (dupName) {
+          newErrors.skills = `Duplicate skill name: ${dupName}`;
+        }
+      }
+    }
+
+    // Validate CLI container refs
+    if (state.agentType === "Declarative" && state.skillRefs.length > 0) {
+      for (const ref of state.skillRefs) {
+        if (!ref.trim()) continue;
+        if (!isValidContainerImage(ref)) {
+          newErrors.skills = `Invalid container image format: ${ref}`;
+          break;
+        }
+      }
+      if (!newErrors.skills) {
+        const refs = state.skillRefs.filter(r => r.trim()).map(r => r.trim().toLowerCase());
+        const dupRef = refs.find((r, i) => refs.indexOf(r) !== i);
+        if (dupRef) {
+          newErrors.skills = `Duplicate container image: ${dupRef}`;
+        }
+      }
     }
 
     setState(prev => ({ ...prev, errors: newErrors }));
@@ -355,6 +413,10 @@ function AgentPageContent({ isEditMode, agentName, agentNamespace }: AgentPageCo
   };
 
   const handleSaveAgent = async () => {
+    if (isViewMode) {
+      return;
+    }
+
     if (!validateForm()) {
       return;
     }
@@ -372,14 +434,21 @@ function AgentPageContent({ isEditMode, agentName, agentNamespace }: AgentPageCo
         name: state.name,
         namespace: state.namespace,
         description: state.description,
+        privateMode: state.privateMode,
+        category: state.category || undefined,
         type: state.agentType,
         systemPrompt: state.systemPrompt,
         promptSources: state.promptSourceRows.map(({ name, alias }) => ({ name, alias })),
         modelName: state.selectedModel?.ref || "",
         stream: state.stream,
         tools: state.selectedTools,
-        skillRefs: useDeclarativeAgentFields ? (state.skillRefs || []).filter(ref => ref.trim()) : undefined,
-        memory: useDeclarativeAgentFields && memoryEnabled
+        skillRefs: state.agentType === "Declarative" && state.skillRefs.length > 0
+          ? state.skillRefs.filter(r => r.trim())
+          : undefined,
+        inlineSkills: state.agentType === "Declarative" && state.inlineSkills.length > 0
+          ? state.inlineSkills.filter(s => s.name.trim() && s.description.trim() && s.content.trim())
+          : undefined,
+        memory: state.agentType === "Declarative" && memoryEnabled
           ? {
             modelConfig: state.selectedMemoryModel?.ref || "",
             ttlDays: state.memoryTtlDays ? parseInt(state.memoryTtlDays, 10) : undefined,
@@ -454,9 +523,9 @@ function AgentPageContent({ isEditMode, agentName, agentNamespace }: AgentPageCo
     return (
       <div className="min-h-screen p-8">
         <div className="max-w-6xl mx-auto">
-          <h1 className="text-2xl font-bold mb-8">{isEditMode ? "Edit Agent" : "Create New Agent"}</h1>
+          <h1 className="text-2xl font-bold mb-8">{isViewMode ? "View Agent" : (isEditMode ? "Edit Agent" : "Create New Agent")}</h1>
 
-          <div className="space-y-6">
+          <fieldset disabled={isFormDisabled} className="space-y-6 min-w-0 border-0 p-0 m-0">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-xl font-bold">
@@ -518,8 +587,8 @@ function AgentPageContent({ isEditMode, agentName, agentNamespace }: AgentPageCo
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="Declarative">Declarative</SelectItem>
-                      <SelectItem value="Sandbox">Sandbox</SelectItem>
-                      <SelectItem value="BYO">BYO</SelectItem>
+                      <SelectItem value="Sandbox" disabled={disableSandboxCreation}>{disableSandboxCreation ? "Sandbox (disabled)" : "Sandbox"}</SelectItem>
+                      <SelectItem value="BYO" disabled={disableByoAgentCreation}>{disableByoAgentCreation ? "BYO (disabled)" : "BYO"}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -539,6 +608,38 @@ function AgentPageContent({ isEditMode, agentName, agentNamespace }: AgentPageCo
                   />
                   {state.errors.description && <p className="text-red-500 text-sm mt-1">{state.errors.description}</p>}
                 </div>
+              
+                <Label className="text-base mb-2 block font-bold">Agent Visibility</Label>
+                <div className="flex items-center justify-between rounded-md border p-4">
+                  <div className="space-y-1">
+                    <Label htmlFor="private-mode-toggle" className="text-sm font-medium">Private or Public</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Private agents are visible only to their owner. Public agents can be viewed by all users.
+                    </p>
+                  </div>
+                  <Tabs
+                    value={state.privateMode ? "private" : "public"}
+                    onValueChange={(v) => setState(prev => ({ ...prev, privateMode: v === "private" }))}
+                  >
+                    <TabsList>
+                      <TabsTrigger value="public" disabled={state.isSubmitting || state.isLoading}>Public</TabsTrigger>
+                      <TabsTrigger value="private" disabled={state.isSubmitting || state.isLoading}>Private</TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                </div>
+
+                <div>
+                  <label className="text-sm mb-2 block">Category (optional)</label>
+                  <p className="text-xs mb-2 block text-muted-foreground">
+                    Assign a category to group agents in the dashboard (e.g. velero, istio, prometheus).
+                  </p>
+                  <CategoryCombobox
+                    value={state.category}
+                    onValueChange={(value) => setState(prev => ({ ...prev, category: value }))}
+                    disabled={state.isSubmitting || state.isLoading}
+                  />
+                </div>
+
 
                 {useDeclarativeAgentFields && (
                   <>
@@ -757,12 +858,10 @@ function AgentPageContent({ isEditMode, agentName, agentNamespace }: AgentPageCo
                 )}
               </CardContent>
             </Card>
-            {useDeclarativeAgentFields && (
-              <>
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
-                      <Settings2 className="h-5 w-5 text-yellow-500" />
+                      <Layers className="h-5 w-5 text-yellow-500" />
                       Tools & Agents
                     </CardTitle>
                   </CardHeader>
@@ -823,95 +922,220 @@ function AgentPageContent({ isEditMode, agentName, agentNamespace }: AgentPageCo
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
-                      <Settings2 className="h-5 w-5 text-blue-500" />
+                      <Layers className="h-5 w-5 text-blue-500" />
                       Skills
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
-                      <div>
-                        <Label className="text-sm mb-2 block font-semibold">Skill Container Images</Label>
-                        <p className="text-xs mb-2 block text-muted-foreground">
-                          Add skills container images. Each skill will be pulled and mounted for your agent to use.
-                        </p>
-                        <div className="space-y-2">
-                          {(state.skillRefs || []).map((ref, idx) => {
-                            const isDuplicate = ref.trim() && state.skillRefs.filter(r => r.trim() === ref.trim()).length > 1;
-                            const isInvalid = ref.trim() && !isValidContainerImage(ref);
-                            const hasError = isDuplicate || isInvalid;
-
-                            return (
-                              <div key={idx} className="space-y-1">
-                                <div className="flex gap-2 items-center">
-                                  <div className="flex-1">
+                      <p className="text-xs text-muted-foreground">
+                        Skills are prompt instructions that guide the agent. They can reference CLI tools mounted from containers at <code>/skills/&lt;container-name&gt;/scripts/...</code>
+                      </p>
+                      <div className="space-y-3">
+                        {state.inlineSkills.map((skill, idx) => (
+                            <div key={idx} className="border rounded-md p-4 space-y-3">
+                              <div className="flex gap-2 items-start">
+                                <div className="flex-1 space-y-3">
+                                  <div className="flex gap-2">
                                     <Input
-                                      placeholder={"ghcr.io/example/python-skill:v1.0.0"}
-                                      value={ref}
+                                      placeholder="Skill name (e.g., data-analysis)"
+                                      value={skill.name}
                                       onChange={(e) => {
-                                        const copy = [...state.skillRefs];
-                                        copy[idx] = e.target.value;
-                                        setState(prev => ({ ...prev, skillRefs: copy, errors: { ...prev.errors, skills: undefined } }));
+                                        const copy = [...state.inlineSkills];
+                                        copy[idx] = { ...copy[idx], name: e.target.value.toLowerCase().replace(/[^a-z0-9.\-]/g, "-") };
+                                        setState(prev => ({ ...prev, inlineSkills: copy }));
                                       }}
-                                      disabled={state.isSubmitting || state.isLoading}
-                                      className={hasError ? "border-red-500" : ""}
+                                      disabled={isFormDisabled}
+                                      className="font-mono text-sm flex-1"
                                     />
-                                    {isDuplicate && (
-                                      <p className="text-xs text-red-500 mt-1">⚠️ This skill is already added</p>
-                                    )}
-                                    {isInvalid && (
-                                      <p className="text-xs text-red-500 mt-1">⚠️ Invalid image format (expected: registry/repository:tag)</p>
-                                    )}
+                                    <Input
+                                      placeholder="Brief description (required)"
+                                      value={skill.description}
+                                      onChange={(e) => {
+                                        const copy = [...state.inlineSkills];
+                                        copy[idx] = { ...copy[idx], description: e.target.value };
+                                        setState(prev => ({ ...prev, inlineSkills: copy }));
+                                      }}
+                                      disabled={isFormDisabled}
+                                      className="flex-1"
+                                    />
                                   </div>
-                                  <Button
-                                    variant="outline"
-                                    size="icon"
-                                    onClick={() => {
-                                      if ((state.skillRefs || []).length < 20) {
-                                        setState(prev => ({ ...prev, skillRefs: [...prev.skillRefs, ""] }));
-                                      }
+                                  <Textarea
+                                    placeholder="Skill instructions (Markdown)"
+                                    value={skill.content}
+                                    onChange={(e) => {
+                                      const copy = [...state.inlineSkills];
+                                      copy[idx] = { ...copy[idx], content: e.target.value };
+                                      setState(prev => ({ ...prev, inlineSkills: copy }));
                                     }}
-                                    title="Add skill"
-                                  >
-                                    <PlusCircle className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => setState(prev => ({ ...prev, skillRefs: prev.skillRefs.filter((_, i) => i !== idx) }))}
-                                    disabled={(state.skillRefs || []).length <= 1}
-                                    title="Remove skill"
-                                  >
-                                    <Trash2 className="h-4 w-4 text-red-500" />
-                                  </Button>
+                                    disabled={isFormDisabled}
+                                    className="min-h-[100px] font-mono text-sm"
+                                  />
                                 </div>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => setState(prev => ({
+                                    ...prev,
+                                    inlineSkills: prev.inlineSkills.filter((_, i) => i !== idx)
+                                  }))}
+                                  disabled={isFormDisabled}
+                                  title="Remove skill"
+                                >
+                                  <Trash2 className="h-4 w-4 text-red-500" />
+                                </Button>
                               </div>
-                            );
-                          })}
-                        </div>
-                        {state.errors.skills && (
-                          <p className="text-red-500 text-sm mt-2">❌ {state.errors.skills}</p>
-                        )}
+                            </div>
+                        ))}
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            if (state.inlineSkills.length < 20) {
+                              setState(prev => ({
+                                ...prev,
+                                inlineSkills: [...prev.inlineSkills, { name: "", description: "", content: "" }]
+                              }));
+                            }
+                          }}
+                          disabled={isFormDisabled || state.inlineSkills.length >= 20}
+                        >
+                          <PlusCircle className="h-4 w-4 mr-2" /> Add Skill
+                        </Button>
                       </div>
+                      {state.errors.skills && (
+                        <p className="text-red-500 text-sm mt-2">{state.errors.skills}</p>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
-              </>
-            )}
-            <div className="flex justify-end">
-              <Button className="bg-violet-500 hover:bg-violet-600" onClick={handleSaveAgent} disabled={state.isSubmitting || state.isLoading}>
-                {state.isSubmitting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    {isEditMode ? "Updating..." : "Creating..."}
-                  </>
-                ) : isEditMode ? (
-                  "Update Agent"
-                ) : (
-                  "Create Agent"
+
+                {(!disableCliContainers || skillCliPresets.length > 0) && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Package className="h-5 w-5 text-orange-500" />
+                      CLI Containers
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <p className="text-xs text-muted-foreground">
+                        Container images are extracted to <code>/skills/&lt;name&gt;/</code> and available to all skills.
+                      </p>
+                      {skillCliPresets.length > 0 && (
+                        <div>
+                          <Label className="text-xs text-muted-foreground mb-1 block">Quick add from presets:</Label>
+                          <div className="flex flex-wrap gap-2">
+                            {skillCliPresets.map((preset) => {
+                              const alreadyAdded = state.skillRefs.some(r => r === preset.ref);
+                              return (
+                                <Button
+                                  key={preset.ref}
+                                  variant="outline"
+                                  size="sm"
+                                  title={preset.description || preset.ref}
+                                  disabled={isFormDisabled || alreadyAdded}
+                                  onClick={() => {
+                                    setState(prev => ({
+                                      ...prev,
+                                      skillRefs: [...prev.skillRefs, preset.ref]
+                                    }));
+                                  }}
+                                >
+                                  <PlusCircle className="h-3 w-3 mr-1" /> {preset.label}
+                                </Button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                      {disableCliContainers && state.skillRefs.length > 0 && (
+                        <div className="space-y-2">
+                          {state.skillRefs.map((ref, idx) => (
+                            <div key={idx} className="flex gap-2 items-center">
+                              <Input
+                                value={ref}
+                                disabled
+                                className="font-mono text-sm"
+                              />
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setState(prev => ({
+                                  ...prev,
+                                  skillRefs: prev.skillRefs.filter((_, i) => i !== idx)
+                                }))}
+                                disabled={isFormDisabled}
+                                title="Remove container"
+                              >
+                                <Trash2 className="h-4 w-4 text-red-500" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {!disableCliContainers && (
+                      <div className="space-y-2">
+                        {state.skillRefs.map((ref, idx) => {
+                          const refInvalid = ref.trim() && !isValidContainerImage(ref);
+                          return (
+                            <div key={idx} className="flex gap-2 items-center">
+                              <Input
+                                placeholder="Container image (e.g., ghcr.io/org/skill:v1.0)"
+                                value={ref}
+                                onChange={(e) => {
+                                  const copy = [...state.skillRefs];
+                                  copy[idx] = e.target.value;
+                                  setState(prev => ({ ...prev, skillRefs: copy }));
+                                }}
+                                disabled={isFormDisabled}
+                                className={refInvalid ? "border-red-500 font-mono text-sm" : "font-mono text-sm"}
+                              />
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setState(prev => ({
+                                  ...prev,
+                                  skillRefs: prev.skillRefs.filter((_, i) => i !== idx)
+                                }))}
+                                disabled={isFormDisabled}
+                                title="Remove container"
+                              >
+                                <Trash2 className="h-4 w-4 text-red-500" />
+                              </Button>
+                            </div>
+                          );
+                        })}
+                        <Button
+                          variant="outline"
+                          onClick={() => setState(prev => ({ ...prev, skillRefs: [...prev.skillRefs, ""] }))}
+                          disabled={isFormDisabled}
+                        >
+                          <PlusCircle className="h-4 w-4 mr-2" /> Add Container
+                        </Button>
+                      </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
                 )}
-              </Button>
-            </div>
-          </div>
+            {!isViewMode && (
+              <div className="flex justify-end">
+                <Button className="bg-violet-500 hover:bg-violet-600" onClick={handleSaveAgent} disabled={state.isSubmitting || state.isLoading}>
+                  {state.isSubmitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      {isEditMode ? "Updating..." : "Creating..."}
+                    </>
+                  ) : isEditMode ? (
+                    "Update Agent"
+                  ) : (
+                    "Create Agent"
+                  )}
+                </Button>
+              </div>
+            )}
+          </fieldset>
         </div>
       </div>
     );
@@ -930,6 +1154,7 @@ export default function AgentPage() {
   // Determine if in edit mode
   const searchParams = useSearchParams();
   const isEditMode = searchParams.get("edit") === "true";
+  const isViewMode = searchParams.get("readonly") === "true";
   const agentName = searchParams.get("name");
   const agentNamespace = searchParams.get("namespace");
 
@@ -938,7 +1163,7 @@ export default function AgentPage() {
 
   return (
     <Suspense fallback={<LoadingState />}>
-      <AgentPageContent key={formKey} isEditMode={isEditMode} agentName={agentName} agentNamespace={agentNamespace} />
+      <AgentPageContent key={formKey} isEditMode={isEditMode} isViewMode={isViewMode} agentName={agentName} agentNamespace={agentNamespace} />
     </Suspense>
   );
 }

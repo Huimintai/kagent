@@ -13,8 +13,10 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { getServers } from "@/app/actions/servers";
 import Link from "next/link";
 import CategoryFilter from "@/components/tools/CategoryFilter";
+import { useAppConfig } from "@/lib/configStore";
 
 export default function ToolsPage() {
+  const { allowedNamespace } = useAppConfig();
   const [toolsData, setToolsData] = useState<{
     tools: RemoteMCPServerResponse[];
     categories: Set<string>;
@@ -49,11 +51,16 @@ export default function ToolsPage() {
       }
       
       const tools = serversResponse.data;
-      
+
+      // Filter by allowed namespace if configured
+      const namespacedTools = allowedNamespace
+        ? tools.filter((s) => s.ref?.startsWith(allowedNamespace + "/"))
+        : tools;
+
       // Extract unique categories and initialize expanded state
       const uniqueCategories = new Set<string>();
       const initialExpandedState: { [key: string]: boolean } = {};
-      tools.forEach(server => {
+      namespacedTools.forEach(server => {
         server.discoveredTools.forEach(tool => {
           const category = getDiscoveredToolCategory(tool, server.ref);
           uniqueCategories.add(category);
@@ -63,7 +70,7 @@ export default function ToolsPage() {
 
       // Update state with tools data
       setToolsData({
-        tools,
+        tools: namespacedTools,
         categories: uniqueCategories,
         isLoading: false,
         error: null

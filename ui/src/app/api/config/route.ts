@@ -26,6 +26,7 @@ export async function GET() {
     ),
     disableMcpServerCreation: envBool("KAGENT_DISABLE_MCP_SERVER_CREATION", "NEXT_PUBLIC_DISABLE_MCP_SERVER_CREATION", true),
     disableByoAgentCreation: envBool("KAGENT_DISABLE_BYO_AGENT_CREATION", "NEXT_PUBLIC_DISABLE_BYO_AGENT_CREATION", true),
+    disableSandboxCreation: envBool("KAGENT_DISABLE_SANDBOX_CREATION", "NEXT_PUBLIC_DISABLE_SANDBOX_CREATION", true),
     disableCliContainers: envBool("KAGENT_DISABLE_CLI_CONTAINERS", "NEXT_PUBLIC_DISABLE_CLI_CONTAINERS", true),
     disablePromptLibrary: envBool("KAGENT_DISABLE_PROMPT_LIBRARY", "NEXT_PUBLIC_DISABLE_PROMPT_LIBRARY", true),
     disableSchedules: envBool("KAGENT_DISABLE_SCHEDULES", "NEXT_PUBLIC_DISABLE_SCHEDULES", true),

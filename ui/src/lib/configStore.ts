@@ -11,6 +11,7 @@ export interface AppConfig {
   modelCreationDisabledMessage: string;
   disableMcpServerCreation: boolean;
   disableByoAgentCreation: boolean;
+  disableSandboxCreation: boolean;
   disableCliContainers: boolean;
   disablePromptLibrary: boolean;
   disableSchedules: boolean;
@@ -26,6 +27,7 @@ const DEFAULTS: Omit<AppConfig, "loaded"> = {
     "Model creation is disabled. Please use the pre-defined models provided by your administrator.",
   disableMcpServerCreation: true,
   disableByoAgentCreation: true,
+  disableSandboxCreation: true,
   disableCliContainers: true,
   disablePromptLibrary: true,
   disableSchedules: true,
