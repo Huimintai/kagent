@@ -65,6 +65,7 @@ require (
 	github.com/google/jsonschema-go v0.4.2
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/ollama/ollama v0.21.0
+	github.com/robfig/cron/v3 v3.0.1
 	github.com/testcontainers/testcontainers-go v0.42.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.42.0
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.19.0

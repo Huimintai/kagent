@@ -1,15 +1,23 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
+	"github.com/kagent-dev/kagent/go/api/adk"
 	"github.com/kagent-dev/kagent/go/api/v1alpha2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	schemev1 "k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 func TestBuildSRTSettingsJSON_DefaultDenyConfig(t *testing.T) {
-	got, err := buildSRTSettingsJSON(nil)
+	agent := &v1alpha2.Agent{
+		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
+	}
+	tr := &adkApiTranslator{kube: fake.NewClientBuilder().WithScheme(schemev1.Scheme).Build()}
+	got, err := tr.buildSRTSettingsJSON(context.Background(), agent, nil, nil)
 	if err != nil {
 		t.Fatalf("buildSRTSettingsJSON() error = %v", err)
 	}
@@ -42,6 +50,13 @@ func TestBuildSRTSettingsJSON_DefaultDenyConfig(t *testing.T) {
 	}
 	if got := filesystem["denyWrite"]; len(got.([]any)) != 0 {
 		t.Fatalf("denyWrite = %#v, want empty list", got)
+	}
+
+	if v, ok := settings["enableWeakerNestedSandbox"]; !ok || v != true {
+		t.Fatalf("enableWeakerNestedSandbox = %#v, want true", v)
+	}
+	if v, ok := settings["allowAllUnixSockets"]; !ok || v != true {
+		t.Fatalf("allowAllUnixSockets = %#v, want true", v)
 	}
 }
 
@@ -115,5 +130,59 @@ func TestBuildConfigSecretData_IncludesSRTSettingsWhenPresent(t *testing.T) {
 
 	if got := data["srt-settings.json"]; got == "" {
 		t.Fatal("srt-settings.json should be present when non-empty")
+	}
+}
+
+func TestMcpServerHosts(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  *adk.AgentConfig
+		want []string
+	}{
+		{name: "nil config", cfg: nil, want: nil},
+		{name: "no tools", cfg: &adk.AgentConfig{}, want: nil},
+		{
+			name: "http tools with external hosts",
+			cfg: &adk.AgentConfig{
+				HttpTools: []adk.HttpMcpServerConfig{
+					{Params: adk.StreamableHTTPConnectionParams{Url: "https://api.github.com/mcp"}},
+					{Params: adk.StreamableHTTPConnectionParams{Url: "https://mcp.example.com/v1"}},
+				},
+			},
+			want: []string{"api.github.com", "mcp.example.com"},
+		},
+		{
+			name: "deduplicates same host",
+			cfg: &adk.AgentConfig{
+				HttpTools: []adk.HttpMcpServerConfig{
+					{Params: adk.StreamableHTTPConnectionParams{Url: "https://api.github.com/mcp"}},
+					{Params: adk.StreamableHTTPConnectionParams{Url: "https://api.github.com/other"}},
+				},
+			},
+			want: []string{"api.github.com"},
+		},
+		{
+			name: "sse tools",
+			cfg: &adk.AgentConfig{
+				SseTools: []adk.SseMcpServerConfig{
+					{Params: adk.SseConnectionParams{Url: "https://sse.example.com/events"}},
+				},
+			},
+			want: []string{"sse.example.com"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := mcpServerHosts(tt.cfg)
+			if len(got) != len(tt.want) {
+				t.Fatalf("mcpServerHosts() = %v, want %v", got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Fatalf("mcpServerHosts()[%d] = %q, want %q", i, got[i], tt.want[i])
+				}
+			}
+		})
 	}
 }

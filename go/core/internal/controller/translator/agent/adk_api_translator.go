@@ -901,6 +901,16 @@ func (a *adkApiTranslator) translateMCPServerTarget(ctx context.Context, agent *
 }
 
 func (a *adkApiTranslator) translateRemoteMCPServerTarget(ctx context.Context, agent *adk.AgentConfig, remoteMcpServer *v1alpha2.RemoteMCPServer, mcpServerTool *v1alpha2.McpServerTool, agentHeaders map[string]string, proxyURL string) error {
+	// Default to forwarding the Authorization header if not explicitly configured.
+	// This enables OIDC token passthrough to MCP servers (e.g., kubectl-mcp-server)
+	// without requiring users to set allowedHeaders on every agent.
+	// Skip the default when sessionTokenLabel is set — those servers use per-user
+	// tokens (e.g., GitHub PATs) that would be overridden by the A2A Authorization header.
+	allowedHeaders := mcpServerTool.AllowedHeaders
+	if len(allowedHeaders) == 0 && mcpServerTool.SessionTokenLabel == "" {
+		allowedHeaders = []string{"authorization"}
+	}
+
 	switch remoteMcpServer.Spec.Protocol {
 	case v1alpha2.RemoteMCPServerProtocolSse:
 		tool, err := a.translateSseHttpTool(ctx, remoteMcpServer, agentHeaders, proxyURL)
@@ -908,10 +918,11 @@ func (a *adkApiTranslator) translateRemoteMCPServerTarget(ctx context.Context, a
 			return err
 		}
 		agent.SseTools = append(agent.SseTools, adk.SseMcpServerConfig{
-			Params:          *tool,
-			Tools:           mcpServerTool.ToolNames,
-			AllowedHeaders:  mcpServerTool.AllowedHeaders,
-			RequireApproval: mcpServerTool.RequireApproval,
+			Params:            *tool,
+			Tools:             mcpServerTool.ToolNames,
+			AllowedHeaders:    allowedHeaders,
+			RequireApproval:   mcpServerTool.RequireApproval,
+			SessionTokenLabel: mcpServerTool.SessionTokenLabel,
 		})
 	default:
 		tool, err := a.translateStreamableHttpTool(ctx, remoteMcpServer, agentHeaders, proxyURL)
@@ -919,10 +930,11 @@ func (a *adkApiTranslator) translateRemoteMCPServerTarget(ctx context.Context, a
 			return err
 		}
 		agent.HttpTools = append(agent.HttpTools, adk.HttpMcpServerConfig{
-			Params:          *tool,
-			Tools:           mcpServerTool.ToolNames,
-			AllowedHeaders:  mcpServerTool.AllowedHeaders,
-			RequireApproval: mcpServerTool.RequireApproval,
+			Params:            *tool,
+			Tools:             mcpServerTool.ToolNames,
+			AllowedHeaders:    allowedHeaders,
+			RequireApproval:   mcpServerTool.RequireApproval,
+			SessionTokenLabel: mcpServerTool.SessionTokenLabel,
 		})
 	}
 	return nil
@@ -1168,11 +1180,12 @@ func validateSubPath(p string) error {
 
 // skillsInitData holds the template data for the unified skills-init script.
 type skillsInitData struct {
-	AuthMountPath string        // "/git-auth" or "" (for git auth)
-	GitRefs       []gitRefData  // git repos to clone
-	OCIRefs       []ociRefData  // OCI images to pull
-	InsecureOCI   bool          // --insecure flag for krane
-	SSHHosts      []sshHostData // extra hosts to add to known_hosts via ssh-keyscan
+	AuthMountPath    string        // "/git-auth" or "" (for git auth)
+	OCIAuthMountPath string        // "/oci-auth" or "" (for OCI registry auth)
+	GitRefs          []gitRefData  // git repos to clone
+	OCIRefs          []ociRefData  // OCI images to pull
+	InsecureOCI      bool          // --insecure flag for krane
+	SSHHosts         []sshHostData // extra hosts to add to known_hosts via ssh-keyscan
 }
 
 // sshHostData holds the host and optional port for an SSH known_hosts entry.
@@ -1234,10 +1247,15 @@ func prepareSkillsInitData(
 	gitRefs []v1alpha2.GitRepo,
 	authSecretRef *corev1.LocalObjectReference,
 	ociRefs []string,
+	hasOCIAuth bool,
 	insecureOCI bool,
 ) (skillsInitData, error) {
 	data := skillsInitData{
 		InsecureOCI: insecureOCI,
+	}
+
+	if hasOCIAuth {
+		data.OCIAuthMountPath = "/oci-auth"
 	}
 
 	if authSecretRef != nil {
@@ -1316,12 +1334,22 @@ func buildSkillsInitContainer(
 	gitRefs []v1alpha2.GitRepo,
 	authSecretRef *corev1.LocalObjectReference,
 	ociRefs []string,
+	ociAuthSecretRef *corev1.LocalObjectReference,
 	insecureOCI bool,
 	securityContext *corev1.SecurityContext,
-	env []corev1.EnvVar,
+	initEnv []corev1.EnvVar,
 	resources corev1.ResourceRequirements,
 ) (container corev1.Container, volumes []corev1.Volume, err error) {
-	data, err := prepareSkillsInitData(gitRefs, authSecretRef, ociRefs, insecureOCI)
+	// Resolve OCI auth secret: explicit per-agent ref takes precedence,
+	// then fall back to the global default from KAGENT_DEFAULT_OCI_AUTH_SECRET.
+	resolvedOCIAuth := ociAuthSecretRef
+	if resolvedOCIAuth == nil {
+		if defaultName := env.KagentDefaultOCIAuthSecret.Get(); defaultName != "" {
+			resolvedOCIAuth = &corev1.LocalObjectReference{Name: defaultName}
+		}
+	}
+
+	data, err := prepareSkillsInitData(gitRefs, authSecretRef, ociRefs, resolvedOCIAuth != nil, insecureOCI)
 	if err != nil {
 		return corev1.Container{}, nil, err
 	}
@@ -1355,13 +1383,30 @@ func buildSkillsInitContainer(
 		})
 	}
 
+	// Mount OCI auth secret if resolved (per-agent or global default)
+	if resolvedOCIAuth != nil {
+		volumes = append(volumes, corev1.Volume{
+			Name: "oci-auth",
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: resolvedOCIAuth.Name,
+				},
+			},
+		})
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      "oci-auth",
+			MountPath: "/oci-auth",
+			ReadOnly:  true,
+		})
+	}
+
 	container = corev1.Container{
 		Name:            "skills-init",
 		Image:           DefaultSkillsInitImageConfig.Image(),
 		Command:         []string{"/bin/sh", "-c", script},
 		VolumeMounts:    volumeMounts,
 		SecurityContext: initSecCtx,
-		Env:             env,
+		Env:             initEnv,
 		Resources:       resources,
 	}
 

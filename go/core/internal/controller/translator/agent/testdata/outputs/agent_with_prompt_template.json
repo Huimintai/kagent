@@ -22,6 +22,9 @@
     "description": "A Kubernetes troubleshooting agent",
     "http_tools": [
       {
+        "allowed_headers": [
+          "authorization"
+        ],
         "params": {
           "headers": {},
           "timeout": 30,
@@ -68,7 +71,7 @@
       },
       "stringData": {
         "agent-card.json": "{\"name\":\"agent_with_prompt_template\",\"description\":\"A Kubernetes troubleshooting agent\",\"url\":\"http://agent-with-prompt-template.test:8080\",\"version\":\"\",\"capabilities\":{\"streaming\":true,\"pushNotifications\":false,\"stateTransitionHistory\":true},\"defaultInputModes\":[\"text\"],\"defaultOutputModes\":[\"text\"],\"skills\":[],\"preferredTransport\":\"JSONRPC\"}",
-        "config.json": "{\"model\":{\"type\":\"openai\",\"model\":\"gpt-4o\",\"base_url\":\"\"},\"description\":\"A Kubernetes troubleshooting agent\",\"instruction\":\"## Preamble\\nYou are a helpful Kubernetes assistant.\\n\\n\\nYou are agent-with-prompt-template, operating in test.\\nYour purpose: A Kubernetes troubleshooting agent\\n\\nAvailable tools: k8s_get_resources, k8s_describe_resource, \\n\\n## Safety Guidelines\\nNever delete resources without explicit user confirmation.\\n\\n\",\"http_tools\":[{\"params\":{\"url\":\"http://localhost:8084/mcp\",\"headers\":{},\"timeout\":30},\"tools\":[\"k8s_get_resources\",\"k8s_describe_resource\"]}],\"stream\":false}"
+        "config.json": "{\"model\":{\"type\":\"openai\",\"model\":\"gpt-4o\",\"base_url\":\"\"},\"description\":\"A Kubernetes troubleshooting agent\",\"instruction\":\"## Preamble\\nYou are a helpful Kubernetes assistant.\\n\\n\\nYou are agent-with-prompt-template, operating in test.\\nYour purpose: A Kubernetes troubleshooting agent\\n\\nAvailable tools: k8s_get_resources, k8s_describe_resource, \\n\\n## Safety Guidelines\\nNever delete resources without explicit user confirmation.\\n\\n\",\"http_tools\":[{\"params\":{\"url\":\"http://localhost:8084/mcp\",\"headers\":{},\"timeout\":30},\"tools\":[\"k8s_get_resources\",\"k8s_describe_resource\"],\"allowed_headers\":[\"authorization\"]}],\"stream\":false}"
       }
     },
     {
@@ -137,7 +140,7 @@
         "template": {
           "metadata": {
             "annotations": {
-              "kagent.dev/config-hash": "17922600608856796760"
+              "kagent.dev/config-hash": "5821243780158356760"
             },
             "labels": {
               "app": "kagent",

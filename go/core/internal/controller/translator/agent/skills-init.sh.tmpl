@@ -1,4 +1,9 @@
 set -e
+{{- if .OCIAuthMountPath }}
+mkdir -p /tmp/docker-config
+cp {{ .OCIAuthMountPath }}/.dockerconfigjson /tmp/docker-config/config.json
+export DOCKER_CONFIG=/tmp/docker-config
+{{- end }}
 {{- if .AuthMountPath }}
 _auth_mount="$(cat <<'ENDVAL'
 {{ .AuthMountPath }}
@@ -35,6 +40,7 @@ _dest="$(cat <<'ENDVAL'
 {{ .Dest }}
 ENDVAL
 )"
+rm -rf "$_dest"
 {{- if .IsCommit }}
 echo "Cloning ${_url} (commit ${_ref}) into ${_dest}"
 git clone -- "$_url" "$_dest"

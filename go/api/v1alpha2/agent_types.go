@@ -91,6 +91,12 @@ type SkillForAgent struct {
 	// +optional
 	InsecureSkipVerify bool `json:"insecureSkipVerify,omitempty"`
 
+	// Reference to a Secret of type kubernetes.io/dockerconfigjson containing
+	// OCI registry credentials. Used by krane in the skills-init container
+	// to authenticate against private registries.
+	// +optional
+	OCIAuthSecretRef *corev1.LocalObjectReference `json:"ociAuthSecretRef,omitempty"`
+
 	// The list of skill images to fetch.
 	// +kubebuilder:validation:MaxItems=20
 	// +kubebuilder:validation:MinItems=1
@@ -209,6 +215,38 @@ type DeclarativeAgentSpec struct {
 	// This includes event compaction (compression) and context caching.
 	// +optional
 	Context *ContextConfig `json:"context,omitempty"`
+
+	// InlineSkills defines prompt-based skills whose content is specified directly
+	// in the Agent spec. Each inline skill is mounted as a SKILL.md file under /skills/<name>/
+	// and discovered by the runtime alongside container-based skills.
+	// +optional
+	// +kubebuilder:validation:MaxItems=20
+	InlineSkills []InlineSkill `json:"inlineSkills,omitempty"`
+}
+
+// InlineSkill defines a prompt-based skill document that is mounted as a SKILL.md
+// file under /skills/<name>/. Skills can reference CLI tools from containers
+// via absolute paths (e.g. /skills/<container-name>/scripts/...).
+type InlineSkill struct {
+	// Name is the unique identifier for this skill. Must be a valid DNS label
+	// (lowercase alphanumeric, dashes, dots). This becomes the directory name under /skills/.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([a-z0-9\.\-]*[a-z0-9])?$`
+	Name string `json:"name"`
+
+	// Description is a short human-readable summary of what the skill does.
+	// This is embedded in the YAML frontmatter of the generated SKILL.md file.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Description string `json:"description"`
+
+	// Content is the full body of the SKILL.md file (everything after the frontmatter).
+	// Supports Markdown formatting.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Content string `json:"content"`
 }
 
 // SandboxConfig configures sandboxed execution behavior.
@@ -464,6 +502,14 @@ type McpServerTool struct {
 	// Example: ["x-user-email", "x-tenant-id"]
 	// +optional
 	AllowedHeaders []string `json:"allowedHeaders,omitempty"`
+
+	// SessionTokenLabel enables per-user token injection for this MCP server.
+	// When set, users can call the built-in set_mcp_token tool to store their
+	// personal access token under this label. The token is then injected as
+	// Authorization: Bearer on each MCP tool call, scoped to the current session only.
+	// Example: "github" or "ado"
+	// +optional
+	SessionTokenLabel string `json:"sessionTokenLabel,omitempty"`
 }
 
 type TypedLocalReference struct {

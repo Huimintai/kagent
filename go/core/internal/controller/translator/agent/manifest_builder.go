@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"net/url"
+	"sort"
 
 	"github.com/kagent-dev/kagent/go/api/adk"
 	"github.com/kagent-dev/kagent/go/api/v1alpha2"
@@ -57,11 +59,15 @@ func (a *adkApiTranslator) BuildManifest(
 	outputs := &AgentOutputs{}
 	manifestCtx := newManifestContext(agent, inputs.Deployment)
 
-	configSecret, err := a.buildConfigSecret(manifestCtx, inputs.Config, inputs.Sandbox, inputs.AgentCard, inputs.SecretHashBytes)
+	configSecret, err := a.buildConfigSecret(ctx, manifestCtx, inputs.Config, inputs.Sandbox, inputs.AgentCard, inputs.SecretHashBytes)
 	if err != nil {
 		return nil, err
 	}
 	outputs.Manifest = append(outputs.Manifest, configSecret.secret)
+
+	if cm := buildInlineSkillsConfigMap(manifestCtx); cm != nil {
+		outputs.Manifest = append(outputs.Manifest, cm)
+	}
 
 	if sa := buildServiceAccount(manifestCtx); sa != nil {
 		outputs.Manifest = append(outputs.Manifest, sa)
@@ -125,6 +131,7 @@ func (m manifestContext) objectMeta() metav1.ObjectMeta {
 }
 
 func (a *adkApiTranslator) buildConfigSecret(
+	ctx context.Context,
 	manifestCtx manifestContext,
 	cfg *adk.AgentConfig,
 	sandboxCfg *v1alpha2.SandboxConfig,
@@ -153,7 +160,7 @@ func (a *adkApiTranslator) buildConfigSecret(
 		agentCard = string(bCard)
 	}
 	if needsSRTSettings(manifestCtx.agent, sandboxCfg) {
-		bSRTSettings, err := buildSRTSettingsJSON(sandboxCfg)
+		bSRTSettings, err := a.buildSRTSettingsJSON(ctx, manifestCtx.agent, sandboxCfg, cfg)
 		if err != nil {
 			return nil, err
 		}
@@ -293,11 +300,28 @@ func needsSRTSettings(agent v1alpha2.AgentObject, sandboxCfg *v1alpha2.SandboxCo
 		*spec.Declarative.ExecuteCodeBlocks
 }
 
-func buildSRTSettingsJSON(sandboxCfg *v1alpha2.SandboxConfig) ([]byte, error) {
-	allowedDomains := []string{}
+func (a *adkApiTranslator) buildSRTSettingsJSON(ctx context.Context, agent v1alpha2.AgentObject, sandboxCfg *v1alpha2.SandboxConfig, cfg *adk.AgentConfig) ([]byte, error) {
+	svcList := &corev1.ServiceList{}
+	if err := a.kube.List(ctx, svcList, client.InNamespace(agent.GetNamespace())); err != nil {
+		return nil, fmt.Errorf("failed to list services in namespace %s: %w", agent.GetNamespace(), err)
+	}
+
+	allowedDomains := make([]string, 0, len(svcList.Items))
+	for _, svc := range svcList.Items {
+		allowedDomains = append(allowedDomains, svc.Name+"."+agent.GetNamespace())
+	}
+
 	if sandboxCfg != nil && sandboxCfg.Network != nil {
 		allowedDomains = append(allowedDomains, sandboxCfg.Network.AllowedDomains...)
 	}
+
+	// Auto-allow hostnames from configured MCP servers so that agents with
+	// external MCP tools (e.g. GitHub) can reach them from the SRT sandbox.
+	allowedDomains = append(allowedDomains, mcpServerHosts(cfg)...)
+
+	// Sort to ensure deterministic JSON output so the config hash stays
+	// stable across reconcile loops (service list order is not guaranteed).
+	sort.Strings(allowedDomains)
 
 	return json.Marshal(map[string]any{
 		"network": map[string]any{
@@ -309,7 +333,39 @@ func buildSRTSettingsJSON(sandboxCfg *v1alpha2.SandboxConfig) ([]byte, error) {
 			"allowWrite": []string{".", "/tmp"},
 			"denyWrite":  []string{},
 		},
+		"enableWeakerNestedSandbox": true,
+		"allowAllUnixSockets":       true,
 	})
+}
+
+// mcpServerHosts extracts unique hostnames from all configured MCP server URLs.
+// These are added to the SRT allowedDomains so that agents can reach external
+// MCP services (e.g. api.github.com) from inside the sandbox.
+func mcpServerHosts(cfg *adk.AgentConfig) []string {
+	if cfg == nil {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	var hosts []string
+	addURL := func(raw string) {
+		u, err := url.Parse(raw)
+		if err != nil || u.Hostname() == "" {
+			return
+		}
+		h := u.Hostname()
+		if _, ok := seen[h]; ok {
+			return
+		}
+		seen[h] = struct{}{}
+		hosts = append(hosts, h)
+	}
+	for _, t := range cfg.HttpTools {
+		addURL(t.Params.Url)
+	}
+	for _, t := range cfg.SseTools {
+		addURL(t.Params.Url)
+	}
+	return hosts
 }
 
 func collectSharedEnv(agent v1alpha2.AgentObject) []corev1.EnvVar {
@@ -342,13 +398,11 @@ func buildSkillsRuntime(
 	needCodeExecIsolation *bool,
 ) ([]corev1.Container, error) {
 	spec := manifestCtx.agent.GetAgentSpec()
-	if spec.Skills == nil {
-		return nil, nil
-	}
 
-	skills := spec.Skills.Refs
-	gitRefs := spec.Skills.GitRefs
-	if len(skills) == 0 && len(gitRefs) == 0 {
+	hasContainerSkills := spec.Skills != nil && (len(spec.Skills.Refs) > 0 || len(spec.Skills.GitRefs) > 0)
+	hasInlineSkills := spec.Declarative != nil && len(spec.Declarative.InlineSkills) > 0
+
+	if !hasContainerSkills && !hasInlineSkills {
 		return nil, nil
 	}
 
@@ -366,23 +420,85 @@ func buildSkillsRuntime(
 	*volumeMounts = append(*volumeMounts, corev1.VolumeMount{
 		Name:      "kagent-skills",
 		MountPath: "/skills",
-		ReadOnly:  true,
+		ReadOnly:  !hasInlineSkills,
 	})
 
+	// Mount inline skills from ConfigMap via SubPath.
+	if hasInlineSkills {
+		cmName := manifestCtx.agent.GetName() + "-inline-skills"
+		*volumes = append(*volumes, corev1.Volume{
+			Name: "inline-skills",
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: cmName,
+					},
+				},
+			},
+		})
+		for _, skill := range spec.Declarative.InlineSkills {
+			*volumeMounts = append(*volumeMounts, corev1.VolumeMount{
+				Name:      "inline-skills",
+				MountPath: fmt.Sprintf("/skills/%s/SKILL.md", skill.Name),
+				SubPath:   skill.Name,
+				ReadOnly:  true,
+			})
+		}
+	}
+
+	// Validate no name collisions between inline skills and container skills.
+	if hasInlineSkills {
+		inlineNames := make(map[string]bool, len(spec.Declarative.InlineSkills))
+		for _, s := range spec.Declarative.InlineSkills {
+			inlineNames[s.Name] = true
+		}
+		if spec.Skills != nil {
+			for _, ref := range spec.Skills.Refs {
+				if n := ociSkillName(ref); inlineNames[n] {
+					return nil, fmt.Errorf("inline skill %q conflicts with OCI skill name from ref %q", n, ref)
+				}
+			}
+			for _, gitRef := range spec.Skills.GitRefs {
+				if n := gitSkillName(gitRef); inlineNames[n] {
+					return nil, fmt.Errorf("inline skill %q conflicts with git skill name from ref %q", n, gitRef.URL)
+				}
+			}
+		}
+	}
+
+	// Build init container for OCI/git skills.
+	if !hasContainerSkills {
+		return nil, nil
+	}
+
+	var allOCIRefs []string
+	var gitRefs []v1alpha2.GitRepo
+	var ociAuthSecretRef *corev1.LocalObjectReference
+	var gitAuthSecretRef *corev1.LocalObjectReference
+	var insecureOCI bool
 	var initResources *corev1.ResourceRequirements
 	var initEnv []corev1.EnvVar
-	if spec.Skills.InitContainer != nil {
-		if spec.Skills.InitContainer.Resources != nil {
-			initResources = spec.Skills.InitContainer.Resources.DeepCopy()
+
+	if spec.Skills != nil {
+		allOCIRefs = append(allOCIRefs, spec.Skills.Refs...)
+		gitRefs = spec.Skills.GitRefs
+		ociAuthSecretRef = spec.Skills.OCIAuthSecretRef
+		gitAuthSecretRef = spec.Skills.GitAuthSecretRef
+		insecureOCI = spec.Skills.InsecureSkipVerify
+		if spec.Skills.InitContainer != nil {
+			if spec.Skills.InitContainer.Resources != nil {
+				initResources = spec.Skills.InitContainer.Resources.DeepCopy()
+			}
+			initEnv = append(initEnv, spec.Skills.InitContainer.Env...)
 		}
-		initEnv = append(initEnv, spec.Skills.InitContainer.Env...)
 	}
 
 	container, skillsVolumes, err := buildSkillsInitContainer(
 		gitRefs,
-		spec.Skills.GitAuthSecretRef,
-		skills,
-		spec.Skills.InsecureSkipVerify,
+		gitAuthSecretRef,
+		allOCIRefs,
+		ociAuthSecretRef,
+		insecureOCI,
 		manifestCtx.deployment.SecurityContext,
 		initEnv,
 		getDefaultResources(initResources),
@@ -393,6 +509,27 @@ func buildSkillsRuntime(
 
 	*volumes = append(*volumes, skillsVolumes...)
 	return []corev1.Container{container}, nil
+}
+
+func buildInlineSkillsConfigMap(manifestCtx manifestContext) *corev1.ConfigMap {
+	spec := manifestCtx.agent.GetAgentSpec()
+	if spec.Declarative == nil || len(spec.Declarative.InlineSkills) == 0 {
+		return nil
+	}
+	data := make(map[string]string, len(spec.Declarative.InlineSkills))
+	for _, s := range spec.Declarative.InlineSkills {
+		data[s.Name] = fmt.Sprintf("---\nname: %s\ndescription: %s\n---\n%s", s.Name, s.Description, s.Content)
+	}
+	return &corev1.ConfigMap{
+		TypeMeta:   metav1.TypeMeta{APIVersion: "v1", Kind: "ConfigMap"},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        manifestCtx.agent.GetName() + "-inline-skills",
+			Namespace:   manifestCtx.agent.GetNamespace(),
+			Annotations: manifestCtx.agent.GetAnnotations(),
+			Labels:      manifestCtx.selectorLabels,
+		},
+		Data: data,
+	}
 }
 
 func projectedTokenVolume() corev1.Volume {
