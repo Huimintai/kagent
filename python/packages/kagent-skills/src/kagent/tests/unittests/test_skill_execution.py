@@ -381,3 +381,76 @@ async def test_execute_command_strips_secret_env_vars(tmp_path):
     assert "GOOGLE_APPLICATION_CREDENTIALS" not in env
     assert "AWS_ACCESS_KEY_ID" not in env
     assert env["HOME"] == "/home/user"
+
+
+@pytest.mark.asyncio
+async def test_execute_command_prepends_skill_bin_paths(tmp_path):
+    """Skill container bin directories should be prepended to PATH."""
+    # Simulate extracted OCI container layouts
+    (tmp_path / "skills" / "kubectl" / "usr" / "local" / "bin").mkdir(parents=True)
+    (tmp_path / "skills" / "kubectl" / "usr" / "bin").mkdir(parents=True)
+    (tmp_path / "skills" / "helm" / "usr" / "local" / "bin").mkdir(parents=True)
+    # A git-style skill with no bin dirs — should be skipped
+    (tmp_path / "skills" / "my-skill").mkdir(parents=True)
+    (tmp_path / "skills" / "my-skill" / "SKILL.md").write_text("---\nname: my-skill\n---")
+
+    captured = {}
+
+    async def mock_exec(*args, **kwargs):
+        captured["env"] = kwargs.get("env", {})
+        mock_process = MagicMock()
+        mock_process.communicate = AsyncMock(return_value=(b"ok", b""))
+        mock_process.returncode = 0
+        return mock_process
+
+    with (
+        patch.dict(
+            "os.environ",
+            {"KAGENT_SRT_SETTINGS_PATH": "/config/srt-settings.json", "PATH": "/usr/bin"},
+            clear=True,
+        ),
+        patch("asyncio.create_subprocess_exec", side_effect=mock_exec),
+    ):
+        working_dir = tmp_path / "work"
+        working_dir.mkdir()
+        await execute_command("echo hi", working_dir=working_dir, skills_dir=tmp_path / "skills")
+
+    path = captured["env"]["PATH"]
+    # Skill bin dirs should appear before system PATH
+    assert path.endswith(":/usr/bin")
+    assert str(tmp_path / "skills" / "helm" / "usr" / "local" / "bin") in path
+    assert str(tmp_path / "skills" / "kubectl" / "usr" / "local" / "bin") in path
+    assert str(tmp_path / "skills" / "kubectl" / "usr" / "bin") in path
+    # my-skill has no bin dirs, should not appear
+    assert "my-skill" not in path
+
+
+@pytest.mark.asyncio
+async def test_execute_command_no_skill_bins_when_empty(tmp_path):
+    """Empty skills directory should not add extra PATH entries."""
+    skills_dir = tmp_path / "skills"
+    skills_dir.mkdir()
+
+    captured = {}
+
+    async def mock_exec(*args, **kwargs):
+        captured["env"] = kwargs.get("env", {})
+        mock_process = MagicMock()
+        mock_process.communicate = AsyncMock(return_value=(b"ok", b""))
+        mock_process.returncode = 0
+        return mock_process
+
+    with (
+        patch.dict(
+            "os.environ",
+            {"KAGENT_SRT_SETTINGS_PATH": "/config/srt-settings.json", "PATH": "/usr/bin"},
+            clear=True,
+        ),
+        patch("asyncio.create_subprocess_exec", side_effect=mock_exec),
+    ):
+        working_dir = tmp_path / "work"
+        working_dir.mkdir()
+        await execute_command("echo hi", working_dir=working_dir, skills_dir=skills_dir)
+
+    # PATH should be unchanged (only system PATH)
+    assert captured["env"]["PATH"] == "/usr/bin"

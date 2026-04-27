@@ -131,6 +131,11 @@ def edit_file_content(
 # Matches env-var names containing secret-related segments as whole
 # underscore-delimited tokens (e.g. OPENAI_API_KEY, DATABASE_PASSWORD)
 # but not partial hits like TOKENIZERS_PARALLELISM.
+# Standard binary subdirectories found in extracted OCI container images.
+# skills-init extracts the full container filesystem into /skills/<name>/,
+# so e.g. kubectl ends up at /skills/kubectl/usr/local/bin/kubectl.
+_SKILL_BIN_SUBDIRS = ("usr/local/bin", "usr/bin", "bin")
+
 _SECRET_PATTERNS = re.compile(
     r"(?:^|_)(API_KEY|ACCESS_KEY|SECRET|TOKEN|PASSWORD|CREDENTIALS?|PRIVATE_KEY)(?:_|$)",
     re.IGNORECASE,
@@ -198,6 +203,22 @@ async def execute_command(
         # Prepend bash venv to PATH so its python and pip are used
         env["PATH"] = f"{bash_venv_bin}:{env.get('PATH', '')}"
         env["VIRTUAL_ENV"] = bash_venv_path
+
+    # Prepend binary directories from extracted skill container images to PATH
+    # so CLI tools (kubectl, helm, etc.) are invocable by name.
+    skills_path = Path(skills_dir)
+    if skills_path.is_dir():
+        skill_bin_paths: list[str] = []
+        for skill_subdir in sorted(skills_path.iterdir()):
+            if not skill_subdir.is_dir():
+                continue
+            for bin_subdir in _SKILL_BIN_SUBDIRS:
+                candidate = skill_subdir / bin_subdir
+                if candidate.is_dir():
+                    skill_bin_paths.append(str(candidate))
+        if skill_bin_paths:
+            existing_path = env.get("PATH", "")
+            env["PATH"] = ":".join(skill_bin_paths) + (":" + existing_path if existing_path else "")
 
     srt_args = _get_srt_settings_args()
 

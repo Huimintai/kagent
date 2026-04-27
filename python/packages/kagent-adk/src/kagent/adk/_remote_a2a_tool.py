@@ -56,8 +56,11 @@ from kagent.core.a2a import (
 logger = logging.getLogger("kagent_adk." + __name__)
 
 _USER_ID_CONTEXT_KEY = "x-user-id"
+_AUTHORIZATION_CONTEXT_KEY = "authorization"
 _SOURCE_HEADER = "x-kagent-source"
 _SOURCE_SUBAGENT = "agent"
+_MCP_TOKEN_STATE_PREFIX = "mcp_token:"
+_MCP_TOKEN_HEADER_PREFIX = "X-MCP-Token-"
 
 
 class _SubagentInterceptor(ClientCallInterceptor):
@@ -73,6 +76,17 @@ class _SubagentInterceptor(ClientCallInterceptor):
         headers[_SOURCE_HEADER] = _SOURCE_SUBAGENT
         if context and _USER_ID_CONTEXT_KEY in context.state:
             headers["x-user-id"] = context.state[_USER_ID_CONTEXT_KEY]
+        # Forward the parent's Authorization header so sub-agent MCP tools
+        # can authenticate against downstream services (e.g. kubectl clusters).
+        if context and _AUTHORIZATION_CONTEXT_KEY in context.state:
+            headers["authorization"] = context.state[_AUTHORIZATION_CONTEXT_KEY]
+        # Forward mcp_token:* session state entries as X-MCP-Token-* headers
+        # so sub-agent MCP tools inherit per-user tokens (e.g. GitHub OAuth).
+        if context and context.state:
+            for key, value in context.state.items():
+                if key.startswith(_MCP_TOKEN_STATE_PREFIX) and value:
+                    label = key[len(_MCP_TOKEN_STATE_PREFIX):]
+                    headers[f"{_MCP_TOKEN_HEADER_PREFIX}{label}"] = value
         http_kwargs["headers"] = headers
         return request_payload, http_kwargs
 
@@ -239,7 +253,19 @@ class KAgentRemoteA2ATool(BaseTool):
 
         # Forward the authenticated user ID so the subagent session is scoped
         # to the same user as the parent agent session.
-        call_context = ClientCallContext(state={_USER_ID_CONTEXT_KEY: tool_context.session.user_id})
+        call_context_state: dict[str, Any] = {_USER_ID_CONTEXT_KEY: tool_context.session.user_id}
+        # Propagate the Authorization header from the parent's session state
+        # so sub-agent MCP tools inherit the user's bearer token.
+        parent_headers = tool_context.state.get("headers", {})
+        auth = parent_headers.get("authorization") or parent_headers.get("Authorization")
+        if auth:
+            call_context_state[_AUTHORIZATION_CONTEXT_KEY] = auth
+        # Propagate mcp_token:* entries so the interceptor can forward them
+        # as X-MCP-Token-* headers to the sub-agent.
+        for key, value in tool_context.state.items():
+            if key.startswith(_MCP_TOKEN_STATE_PREFIX) and value:
+                call_context_state[key] = value
+        call_context = ClientCallContext(state=call_context_state)
 
         task: Optional[Task] = None
         try:
@@ -381,7 +407,17 @@ class KAgentRemoteA2ATool(BaseTool):
         )
 
         client = await self._ensure_client()
-        call_context = ClientCallContext(state={_USER_ID_CONTEXT_KEY: tool_context.session.user_id})
+        call_context_state: dict[str, Any] = {_USER_ID_CONTEXT_KEY: tool_context.session.user_id}
+        parent_headers = tool_context.state.get("headers", {})
+        auth = parent_headers.get("authorization") or parent_headers.get("Authorization")
+        if auth:
+            call_context_state[_AUTHORIZATION_CONTEXT_KEY] = auth
+        # Propagate mcp_token:* entries so the interceptor can forward them
+        # as X-MCP-Token-* headers to the sub-agent.
+        for key, value in tool_context.state.items():
+            if key.startswith(_MCP_TOKEN_STATE_PREFIX) and value:
+                call_context_state[key] = value
+        call_context = ClientCallContext(state=call_context_state)
         task: Optional[Task] = None
         try:
             async for response in client.send_message(request=decision_message, context=call_context):
