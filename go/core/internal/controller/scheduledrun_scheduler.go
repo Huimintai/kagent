@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
@@ -31,6 +32,7 @@ import (
 	"github.com/kagent-dev/kagent/go/api/database"
 	"github.com/kagent-dev/kagent/go/api/v1alpha2"
 	"github.com/kagent-dev/kagent/go/core/internal/utils"
+	a2aclient "trpc.group/trpc-go/trpc-a2a-go/client"
 	"trpc.group/trpc-go/trpc-a2a-go/protocol"
 )
 
@@ -102,6 +104,19 @@ func (s *ScheduledRunScheduler) RemoveSchedule(key types.NamespacedName) {
 	}
 }
 
+// userIDInjector is an HTTP RoundTripper that injects user identity headers
+// so the agent runtime knows which user the session belongs to.
+type userIDInjector struct {
+	base   http.RoundTripper
+	userID string
+}
+
+func (t *userIDInjector) RoundTrip(req *http.Request) (*http.Response, error) {
+	req = req.Clone(req.Context())
+	req.Header.Set("X-User-Id", t.userID)
+	return t.base.RoundTrip(req)
+}
+
 func (s *ScheduledRunScheduler) triggerRun(key types.NamespacedName) {
 	log := schedulerLog.WithValues("scheduledRun", key)
 	ctx := context.Background()
@@ -160,20 +175,42 @@ func (s *ScheduledRunScheduler) triggerRun(key types.NamespacedName) {
 		return
 	}
 
-	event := &database.Event{
-		ID:        protocol.GenerateContextID(),
-		SessionID: sessionID,
-		UserID:    sessionUserID,
-		Data:      sr.Spec.Prompt,
+	// Send A2A message to the agent to actually execute the prompt.
+	agentURL := fmt.Sprintf("http://%s.%s:8080", sr.Spec.AgentRef.Name, sr.Spec.AgentRef.Namespace)
+	client, err := a2aclient.NewA2AClient(
+		agentURL,
+		a2aclient.WithTimeout(5*time.Minute),
+		a2aclient.WithHTTPClient(&http.Client{
+			Transport: &userIDInjector{
+				base:   http.DefaultTransport,
+				userID: sessionUserID,
+			},
+		}),
+	)
+	if err != nil {
+		log.Error(err, "Failed to create A2A client for scheduled run")
+		s.markRunComplete(ctx, key, sessionID, v1alpha2.RunStatusFailed, fmt.Sprintf("failed to create A2A client: %v", err))
+		return
 	}
-	if err := s.dbClient.StoreEvents(ctx, event); err != nil {
-		log.Error(err, "Failed to store prompt event for scheduled run")
-		s.markRunComplete(ctx, key, sessionID, v1alpha2.RunStatusFailed, fmt.Sprintf("failed to store event: %v", err))
+
+	log.Info("Sending A2A message to agent", "sessionID", sessionID, "agentURL", agentURL)
+
+	_, err = client.SendMessage(ctx, protocol.SendMessageParams{
+		Message: protocol.Message{
+			Kind:      protocol.KindMessage,
+			Role:      protocol.MessageRoleUser,
+			ContextID: &sessionID,
+			Parts:     []protocol.Part{protocol.NewTextPart(sr.Spec.Prompt)},
+		},
+	})
+	if err != nil {
+		log.Error(err, "Failed to send A2A message for scheduled run")
+		s.markRunComplete(ctx, key, sessionID, v1alpha2.RunStatusFailed, fmt.Sprintf("agent invocation failed: %v", err))
 		return
 	}
 
 	s.markRunComplete(ctx, key, sessionID, v1alpha2.RunStatusSucceeded, "")
-	log.Info("Scheduled run triggered successfully", "sessionID", sessionID)
+	log.Info("Scheduled run completed successfully", "sessionID", sessionID)
 }
 
 func (s *ScheduledRunScheduler) markRunComplete(ctx context.Context, key types.NamespacedName, sessionID string, status v1alpha2.RunStatus, message string) {
