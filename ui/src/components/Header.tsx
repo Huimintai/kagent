@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Button } from "./ui/button";
 import KAgentLogoWithText from "./kagent-logo-text";
 import KagentLogo from "./kagent-logo";
-import { Plus, Menu, X, ChevronDown, Brain, Server, Eye, Hammer, HomeIcon, ScrollText, LogOut, Ban, Clock, RefreshCw } from "lucide-react";
+import { Plus, Menu, X, ChevronDown, Brain, Server, Eye, Hammer, HomeIcon, ScrollText, LogOut, Ban, Clock } from "lucide-react";
 import { useAppConfig } from "@/lib/configStore";
 import { Identicon } from "./Identicon";
 import { ThemeToggle } from "./ThemeToggle";
@@ -25,7 +25,6 @@ export function Header() {
   const [mounted, setMounted] = useState(false);
   const userId = useUserStore((state) => state.userId);
   const clearLoginSession = useUserStore((state) => state.clearLoginSession);
-  const renewToken = useUserStore((state) => state.renewToken);
   const { disableModelCreation, disableMcpServerCreation, disablePromptLibrary, disableSchedules } = useAppConfig();
 
   useEffect(() => { setMounted(true); }, []);
@@ -221,11 +220,6 @@ export function Header() {
                     {displayUserId}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={renewToken}>
-                    <RefreshCw className="h-4 w-4" />
-                    Renew Token
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={clearLoginSession}>
                     <LogOut className="h-4 w-4" />
                     Sign out
@@ -396,11 +390,6 @@ export function Header() {
                     <DropdownMenuSeparator />
                     <DropdownMenuItem disabled className="break-all">
                       {displayUserId}
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={renewToken}>
-                      <RefreshCw className="h-4 w-4" />
-                      Renew Token
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
