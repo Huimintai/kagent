@@ -129,7 +129,7 @@ export default function ServersPage() {
   };
 
   return (
-    <div className="mt-12 mx-auto max-w-6xl px-6">
+    <div className="mt-8 mx-auto max-w-6xl px-6">
       <div className="flex justify-between items-center mb-6">
         <div className="flex items-center gap-4">
           <h1 className="text-2xl font-bold">MCP Servers</h1>

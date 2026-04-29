@@ -16,7 +16,7 @@ import { MemoriesDialog } from "@/components/MemoriesDialog";
 import KagentLogo from "@/components/kagent-logo";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Brain, Eye, MoreHorizontal, Pencil, Trash2, Shield } from "lucide-react";
+import { Brain, Eye, MoreHorizontal, Pencil, Trash2, Shield, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAppConfig, isEffectivelyProtectedCheck } from "@/lib/configStore";
 import { Badge } from "@/components/ui/badge";
@@ -82,9 +82,9 @@ export function AgentCard({ agentResponse }: AgentCardProps) {
 
   const cardContent = (
     <Card className={cn(
-      "group relative transition-all duration-200 overflow-hidden min-h-[200px]",
+      "group relative transition-all duration-200 overflow-hidden min-h-[200px] border-l-2 border-l-transparent",
       isReady
-        ? 'cursor-pointer hover:border-primary hover:shadow-md'
+        ? 'cursor-pointer hover:border-l-primary hover:shadow-md hover:-translate-y-0.5'
         : 'cursor-default'
     )}>
       <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2 relative z-30">
@@ -160,17 +160,23 @@ export function AgentCard({ agentResponse }: AgentCardProps) {
         <p className={cn("text-sm text-muted-foreground overflow-hidden", hasBadges ? "line-clamp-2" : "line-clamp-3")}>
           {agent.spec.description}
         </p>
-        <div className="mt-4 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-          {isBYO ? (
-            <span title={byoImage} className="truncate">Image: {byoImage}</span>
-          ) : (
-            <span className="truncate">{modelProvider} ({model})</span>
-          )}
-          {privateMode && (
-            <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-800 dark:bg-slate-700 dark:text-slate-100">
-              Private
-            </span>
-          )}
+        <div className="mt-auto flex flex-col gap-2">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <User className="h-3 w-3 flex-shrink-0" />
+            <span className="truncate">{ownerId || "admin"}</span>
+          </div>
+          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+            {isBYO ? (
+              <span title={byoImage} className="truncate">Image: {byoImage}</span>
+            ) : (
+              <span className="truncate">{modelProvider} ({model})</span>
+            )}
+            {privateMode && (
+              <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-800 dark:bg-slate-700 dark:text-slate-100">
+                Private
+              </span>
+            )}
+          </div>
         </div>
       </CardContent>
       {statusInfo && (

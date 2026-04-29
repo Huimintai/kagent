@@ -43,13 +43,13 @@ export function Header() {
   };
 
   return (
-    <nav className="relative py-4 md:py-8 border-b">
+    <nav className="relative py-3 border-b bg-background/80 backdrop-blur-md">
       <div className="max-w-6xl mx-auto px-4 md:px-6">
         <TokenExpiryBanner />
         <div className="flex justify-between items-center">
           <Link href="/" className="flex items-center gap-3">
             <KAgentLogoWithText className="h-5" />
-            <span className="text-sm font-semibold text-muted-foreground hidden lg:block">DBCI Agentic AI Platform Playground</span>
+            <span className="text-sm font-semibold text-muted-foreground hidden lg:block">DBCI Agentic AI Platform</span>
           </Link>
           
           {/* Mobile menu button */}

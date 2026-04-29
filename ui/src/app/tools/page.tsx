@@ -163,7 +163,7 @@ export default function ToolsPage() {
   };
 
   return (
-    <div className="mt-12 mx-auto max-w-6xl px-6 pb-12">
+    <div className="mt-8 mx-auto max-w-6xl px-6 pb-12">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Tools Library</h1>
         <Link href="/servers" className="text-blue-600 hover:text-blue-800 text-sm">

@@ -16,7 +16,7 @@ const geistSans = Geist({
 });
 
 export const metadata: Metadata = {
-  title: "kagent.dev",
+  title: "DBCI Agentic AI Platform",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
