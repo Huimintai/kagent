@@ -1,15 +1,16 @@
 'use client'
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Button } from "./ui/button";
 import KAgentLogoWithText from "./kagent-logo-text";
 import KagentLogo from "./kagent-logo";
-import { Plus, Menu, X, ChevronDown, Brain, Server, Eye, Hammer, HomeIcon, ScrollText, LogOut, Ban, Clock } from "lucide-react";
+import { Plus, Menu, X, ChevronDown, Brain, Server, Eye, Hammer, HomeIcon, ScrollText, LogOut, Ban, Clock, RefreshCw } from "lucide-react";
 import { useAppConfig } from "@/lib/configStore";
 import { Identicon } from "./Identicon";
 import { ThemeToggle } from "./ThemeToggle";
 import GitHubConnectButton from "./GitHubConnectButton";
 import { useUserStore } from "@/lib/userStore";
+import { TokenExpiryBanner } from "./TokenExpiryBanner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,9 +22,15 @@ import {
 
 export function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const userId = useUserStore((state) => state.userId);
   const clearLoginSession = useUserStore((state) => state.clearLoginSession);
+  const renewToken = useUserStore((state) => state.renewToken);
   const { disableModelCreation, disableMcpServerCreation, disablePromptLibrary, disableSchedules } = useAppConfig();
+
+  useEffect(() => { setMounted(true); }, []);
+
+  const displayUserId = mounted ? userId : "";
 
   const toggleMenu = () => {
     setIsMenuOpen(!isMenuOpen);
@@ -37,12 +44,13 @@ export function Header() {
   };
 
   return (
-    <nav className="py-4 md:py-8 border-b">
+    <nav className="relative py-4 md:py-8 border-b">
       <div className="max-w-6xl mx-auto px-4 md:px-6">
+        <TokenExpiryBanner />
         <div className="flex justify-between items-center">
           <Link href="/" className="flex items-center gap-3">
             <KAgentLogoWithText className="h-5" />
-            <span className="text-sm font-semibold text-muted-foreground hidden lg:block">DBCI kagent Playground</span>
+            <span className="text-sm font-semibold text-muted-foreground hidden lg:block">DBCI Agentic AI Platform Playground</span>
           </Link>
           
           {/* Mobile menu button */}
@@ -205,12 +213,17 @@ export function Header() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="icon" aria-label="User menu" className="overflow-hidden p-0">
-                    <Identicon value={userId || "user"} size={32} />
+                    <Identicon value={displayUserId || "user"} size={32} />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="max-w-64">
                   <DropdownMenuItem disabled className="break-all">
-                    {userId}
+                    {displayUserId}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={renewToken}>
+                    <RefreshCw className="h-4 w-4" />
+                    Renew Token
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={clearLoginSession}>
@@ -375,14 +388,19 @@ export function Header() {
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="icon" aria-label="User menu" className="overflow-hidden p-0">
-                      <Identicon value={userId || "user"} size={32} />
+                      <Identicon value={displayUserId || "user"} size={32} />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="max-w-64">
                     <DropdownMenuLabel>Signed in as</DropdownMenuLabel>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem disabled className="break-all">
-                      {userId}
+                      {displayUserId}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={renewToken}>
+                      <RefreshCw className="h-4 w-4" />
+                      Renew Token
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
