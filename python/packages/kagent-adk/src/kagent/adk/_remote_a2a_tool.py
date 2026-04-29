@@ -262,7 +262,7 @@ class KAgentRemoteA2ATool(BaseTool):
             call_context_state[_AUTHORIZATION_CONTEXT_KEY] = auth
         # Propagate mcp_token:* entries so the interceptor can forward them
         # as X-MCP-Token-* headers to the sub-agent.
-        for key, value in tool_context.state.items():
+        for key, value in tool_context.state.to_dict().items():
             if key.startswith(_MCP_TOKEN_STATE_PREFIX) and value:
                 call_context_state[key] = value
         call_context = ClientCallContext(state=call_context_state)

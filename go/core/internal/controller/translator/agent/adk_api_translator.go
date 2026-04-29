@@ -901,13 +901,24 @@ func (a *adkApiTranslator) translateMCPServerTarget(ctx context.Context, agent *
 }
 
 func (a *adkApiTranslator) translateRemoteMCPServerTarget(ctx context.Context, agent *adk.AgentConfig, remoteMcpServer *v1alpha2.RemoteMCPServer, mcpServerTool *v1alpha2.McpServerTool, agentHeaders map[string]string, proxyURL string) error {
+	// Inherit sessionTokenLabel from the RemoteMCPServer annotation if not explicitly
+	// set on the tool reference. This allows server operators to declare that a server
+	// requires per-user tokens (e.g., GitHub OAuth) without requiring every agent author
+	// to remember to set sessionTokenLabel on their tool references.
+	sessionTokenLabel := mcpServerTool.SessionTokenLabel
+	if sessionTokenLabel == "" {
+		if label, ok := remoteMcpServer.Annotations["kagent.dev/session-token-label"]; ok && label != "" {
+			sessionTokenLabel = label
+		}
+	}
+
 	// Default to forwarding the Authorization header if not explicitly configured.
 	// This enables OIDC token passthrough to MCP servers (e.g., kubectl-mcp-server)
 	// without requiring users to set allowedHeaders on every agent.
 	// Skip the default when sessionTokenLabel is set — those servers use per-user
 	// tokens (e.g., GitHub PATs) that would be overridden by the A2A Authorization header.
 	allowedHeaders := mcpServerTool.AllowedHeaders
-	if len(allowedHeaders) == 0 && mcpServerTool.SessionTokenLabel == "" {
+	if len(allowedHeaders) == 0 && sessionTokenLabel == "" {
 		allowedHeaders = []string{"authorization"}
 	}
 
@@ -922,7 +933,7 @@ func (a *adkApiTranslator) translateRemoteMCPServerTarget(ctx context.Context, a
 			Tools:             mcpServerTool.ToolNames,
 			AllowedHeaders:    allowedHeaders,
 			RequireApproval:   mcpServerTool.RequireApproval,
-			SessionTokenLabel: mcpServerTool.SessionTokenLabel,
+			SessionTokenLabel: sessionTokenLabel,
 		})
 	default:
 		tool, err := a.translateStreamableHttpTool(ctx, remoteMcpServer, agentHeaders, proxyURL)
@@ -934,7 +945,7 @@ func (a *adkApiTranslator) translateRemoteMCPServerTarget(ctx context.Context, a
 			Tools:             mcpServerTool.ToolNames,
 			AllowedHeaders:    allowedHeaders,
 			RequireApproval:   mcpServerTool.RequireApproval,
-			SessionTokenLabel: mcpServerTool.SessionTokenLabel,
+			SessionTokenLabel: sessionTokenLabel,
 		})
 	}
 	return nil
