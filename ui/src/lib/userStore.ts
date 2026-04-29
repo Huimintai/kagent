@@ -5,6 +5,7 @@ interface UserStore {
   userId: string
   setUserId: (userId: string) => void
   clearLoginSession: () => void
+  renewToken: () => void
 }
 
 const DEFAULT_USER_ID = 'admin@kagent.dev'
@@ -57,6 +58,14 @@ export const useUserStore = create<UserStore>((set) => {
         window.location.assign(OAUTH2_PROXY_SIGN_OUT_PATH)
       }
       set({ userId: DEFAULT_USER_ID })
+    },
+    renewToken: () => {
+      // Sign out then redirect to / — oauth2-proxy auto-starts a fresh OIDC
+      // flow on the unauthenticated redirect target, issuing a new token.
+      // We intentionally keep localStorage intact so userId survives the round-trip.
+      if (typeof window !== 'undefined') {
+        window.location.assign(OAUTH2_PROXY_SIGN_OUT_PATH)
+      }
     },
   }
 })
