@@ -191,7 +191,7 @@ export default function ChatInterface({ selectedAgentName, selectedNamespace, se
       stopListening();
     }
 
-    const userMessageText = currentInputMessage;
+    const userMessageText = currentInputMessage.trim();
     setCurrentInputMessage("");
     setChatStatus("thinking");
     setStoredMessages(prev => [...prev, ...streamingMessages]);
