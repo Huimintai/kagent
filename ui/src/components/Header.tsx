@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { Button } from "./ui/button";
 import KAgentLogoWithText from "./kagent-logo-text";
@@ -10,7 +10,7 @@ import { Identicon } from "./Identicon";
 import { ThemeToggle } from "./ThemeToggle";
 import GitHubConnectButton from "./GitHubConnectButton";
 import { useUserStore } from "@/lib/userStore";
-import { TokenExpiryBanner } from "./TokenExpiryBanner";
+import { OidcExpiryBanner, GithubExpiryBanner } from "./TokenExpiryBanner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,11 +23,23 @@ import {
 export function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [githubExpiredLabels, setGithubExpiredLabels] = useState<string[]>([]);
+  const [rightControlsWidth, setRightControlsWidth] = useState(0);
+  const rightControlsRef = useRef<HTMLDivElement>(null);
   const userId = useUserStore((state) => state.userId);
   const clearLoginSession = useUserStore((state) => state.clearLoginSession);
   const { disableModelCreation, disableMcpServerCreation, disablePromptLibrary, disableSchedules } = useAppConfig();
 
   useEffect(() => { setMounted(true); }, []);
+
+  useEffect(() => {
+    const el = rightControlsRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => setRightControlsWidth(el.offsetWidth));
+    observer.observe(el);
+    setRightControlsWidth(el.offsetWidth);
+    return () => observer.disconnect();
+  }, []);
 
   const displayUserId = mounted ? userId : "";
 
@@ -45,7 +57,11 @@ export function Header() {
   return (
     <nav className="relative py-3 border-b bg-background/80 backdrop-blur-md">
       <div className="max-w-6xl mx-auto px-4 md:px-6">
-        <TokenExpiryBanner />
+        <OidcExpiryBanner />
+        <GithubExpiryBanner
+          githubExpiredLabels={githubExpiredLabels}
+          rightSpacerWidth={rightControlsWidth}
+        />
         <div className="flex justify-between items-center">
           <Link href="/" className="flex items-center gap-3">
             <KAgentLogoWithText className="h-5" />
@@ -204,10 +220,11 @@ export function Header() {
               </DropdownMenuContent>
             </DropdownMenu>
 
-
-
-            <div className="flex items-center gap-2">
-              <GitHubConnectButton />
+            <div className="flex items-center gap-2" ref={rightControlsRef}>
+              <GitHubConnectButton
+                onTokenExpired={setGithubExpiredLabels}
+                onDropdownOpen={() => setGithubExpiredLabels([])}
+              />
               <ThemeToggle />
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -377,7 +394,10 @@ export function Header() {
               </DropdownMenu>
 
               <div className="flex items-center justify-end gap-2 py-2">
-                <GitHubConnectButton />
+                <GitHubConnectButton
+                  onTokenExpired={setGithubExpiredLabels}
+                  onDropdownOpen={() => setGithubExpiredLabels([])}
+                />
                 <ThemeToggle />
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>

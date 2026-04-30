@@ -41,7 +41,17 @@ const GitHubIcon = () => (
   </svg>
 );
 
-export default function GitHubConnectButton() {
+// Smoke-test flag — flip locally to verify the GitHub expiry banner without waiting for a real token expiry.
+// DEV_GITHUB_EXPIRE_ON_LOAD: treat all connected instances as expired immediately on page load.
+// Defaults to false — never commit with this enabled.
+const DEV_GITHUB_EXPIRE_ON_LOAD = false;
+
+interface GitHubConnectButtonProps {
+  onTokenExpired?: (labels: string[]) => void;
+  onDropdownOpen?: () => void;
+}
+
+export default function GitHubConnectButton({ onTokenExpired, onDropdownOpen }: GitHubConnectButtonProps) {
   const [instances, setInstances] = useState<InstanceStatus[]>([]);
   const [disconnecting, setDisconnecting] = useState<InstanceStatus | null>(null);
   const [connecting, setConnecting] = useState<InstanceStatus | null>(null);
@@ -50,10 +60,43 @@ export default function GitHubConnectButton() {
     fetch("/actions/api/auth/github/status")
       .then((r) => r.json())
       .then((data) => {
-        if (data.instances) setInstances(data.instances);
+        if (!data.instances) return;
+        const fetched: InstanceStatus[] = data.instances;
+        setInstances(fetched);
+
+        if (DEV_GITHUB_EXPIRE_ON_LOAD) {
+          const expiredLabels = fetched.filter((i) => !i.disabled).map((i) => i.label);
+          if (expiredLabels.length === 0) return;
+          onTokenExpired?.(expiredLabels);
+          return;
+        }
+
+        // Validate tokens for connected, non-disabled instances against the GitHub API.
+        // A present cookie does not guarantee the token is still accepted.
+        // Disabled instances are unavailable by config — skip expiry checks for them.
+        const connected = fetched.filter((i) => i.connected && !i.disabled);
+        if (connected.length === 0) return;
+
+        fetch("/actions/api/auth/github/validate")
+          .then((r) => r.json())
+          .then((v: { instances: { id: string; valid: boolean }[] }) => {
+            const invalidIds = new Set(
+              v.instances.filter((r) => !r.valid).map((r) => r.id)
+            );
+            if (invalidIds.size === 0) return;
+
+            setInstances((prev) =>
+              prev.map((i) => invalidIds.has(i.id) ? { ...i, connected: false } : i)
+            );
+            const expiredLabels = fetched
+              .filter((i) => invalidIds.has(i.id) && !i.disabled)
+              .map((i) => i.label);
+            onTokenExpired?.(expiredLabels);
+          })
+          .catch(() => {/* best-effort — don't disrupt UI on network error */});
       })
       .catch(() => setInstances([]));
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Client-side cookie sync (picks up changes after OAuth redirect)
   useEffect(() => {
@@ -116,7 +159,7 @@ export default function GitHubConnectButton() {
     }
     return (
       <>
-        <Button variant="outline" size="sm" className="text-xs gap-1.5" onClick={() => handleConnect(inst)}>
+        <Button variant="outline" size="sm" className="text-xs gap-1.5" onClick={() => { onDropdownOpen?.(); handleConnect(inst); }}>
           <GitHubIcon />
           Connect GitHub
         </Button>
@@ -128,7 +171,7 @@ export default function GitHubConnectButton() {
   // --- Multiple instances: dropdown ---
   return (
     <>
-      <DropdownMenu>
+      <DropdownMenu onOpenChange={(open) => { if (open) onDropdownOpen?.(); }}>
         <DropdownMenuTrigger asChild>
           <Button variant="outline" size="sm" className="text-xs gap-1.5">
             <GitHubIcon />
