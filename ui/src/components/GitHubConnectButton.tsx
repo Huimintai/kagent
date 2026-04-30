@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -41,10 +41,12 @@ const GitHubIcon = () => (
   </svg>
 );
 
-// Smoke-test flag — flip locally to verify the GitHub expiry banner without waiting for a real token expiry.
-// DEV_GITHUB_EXPIRE_ON_LOAD: treat all connected instances as expired immediately on page load.
-// Defaults to false — never commit with this enabled.
+// Smoke-test flags — flip locally to verify the GitHub expiry banner without waiting for a real token expiry.
+// DEV_GITHUB_EXPIRE_ON_LOAD: treat all instances as expired immediately on page load.
+// DEV_GITHUB_EXPIRE_ON_VISIBILITY: treat all instances as expired every time the tab regains focus.
+// Both default to false — never commit with these enabled.
 const DEV_GITHUB_EXPIRE_ON_LOAD = false;
+const DEV_GITHUB_EXPIRE_ON_VISIBILITY = false;
 
 interface GitHubConnectButtonProps {
   onTokenExpired?: (labels: string[]) => void;
@@ -55,6 +57,7 @@ export default function GitHubConnectButton({ onTokenExpired, onDropdownOpen }: 
   const [instances, setInstances] = useState<InstanceStatus[]>([]);
   const [disconnecting, setDisconnecting] = useState<InstanceStatus | null>(null);
   const [connecting, setConnecting] = useState<InstanceStatus | null>(null);
+  const instancesRef = useRef<InstanceStatus[]>([]);
 
   useEffect(() => {
     fetch("/actions/api/auth/github/status")
@@ -63,6 +66,7 @@ export default function GitHubConnectButton({ onTokenExpired, onDropdownOpen }: 
         if (!data.instances) return;
         const fetched: InstanceStatus[] = data.instances;
         setInstances(fetched);
+        instancesRef.current = fetched;
 
         if (DEV_GITHUB_EXPIRE_ON_LOAD) {
           const expiredLabels = fetched.filter((i) => !i.disabled).map((i) => i.label);
@@ -98,14 +102,49 @@ export default function GitHubConnectButton({ onTokenExpired, onDropdownOpen }: 
       .catch(() => setInstances([]));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Re-validate on tab visibility — catches tokens revoked while the tab was in the background.
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+
+      if (DEV_GITHUB_EXPIRE_ON_VISIBILITY) {
+        const expiredLabels = instancesRef.current.filter((i) => !i.disabled).map((i) => i.label);
+        if (expiredLabels.length > 0) onTokenExpired?.(expiredLabels);
+        return;
+      }
+
+      // Only re-validate if there are connected non-disabled instances to check.
+      const connected = instancesRef.current.filter((i) => i.connected && !i.disabled);
+      if (connected.length === 0) return;
+
+      fetch("/actions/api/auth/github/validate")
+        .then((r) => r.json())
+        .then((v: { instances: { id: string; valid: boolean }[] }) => {
+          const invalidIds = new Set(v.instances.filter((r) => !r.valid).map((r) => r.id));
+          if (invalidIds.size === 0) return;
+          setInstances((prev) => prev.map((i) => invalidIds.has(i.id) ? { ...i, connected: false } : i));
+          const expiredLabels = instancesRef.current
+            .filter((i) => invalidIds.has(i.id) && !i.disabled)
+            .map((i) => i.label);
+          onTokenExpired?.(expiredLabels);
+        })
+        .catch(() => {/* best-effort */});
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [onTokenExpired]);
+
   // Client-side cookie sync (picks up changes after OAuth redirect)
   useEffect(() => {
-    setInstances((prev) =>
-      prev.map((inst) => ({
+    setInstances((prev) => {
+      const updated = prev.map((inst) => ({
         ...inst,
         connected: inst.connected || getCookie(`kagent_github_connected_${inst.id}`) === "true",
-      }))
-    );
+      }));
+      instancesRef.current = updated;
+      return updated;
+    });
   }, []);
 
   if (instances.length === 0) return null;
