@@ -242,7 +242,7 @@ export function AgentDetailsSidebar({ selectedAgentName, currentAgent, allTools 
       <Sidebar
         side={"right"}
         collapsible="offcanvas"
-        className="md:top-[101px] md:h-[calc(100svh-101px)]"
+        className="md:top-0 md:h-svh md:pt-[57px]"
       >
         <SidebarHeader>Agent Details</SidebarHeader>
         <SidebarContent>

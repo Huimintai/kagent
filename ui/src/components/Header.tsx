@@ -55,7 +55,7 @@ export function Header() {
   };
 
   return (
-    <nav className="relative py-3 border-b bg-background/80 backdrop-blur-md">
+    <nav className="relative z-20 py-3 border-b bg-background/80 backdrop-blur-md">
       <div className="max-w-6xl mx-auto px-4 md:px-6">
         <OidcExpiryBanner />
         <GithubExpiryBanner

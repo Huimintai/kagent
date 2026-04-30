@@ -28,7 +28,7 @@ export default function SessionsSidebar({
     <Sidebar 
       side="left"
       collapsible="offcanvas"
-      className="md:top-[101px] md:h-[calc(100svh-101px)]"
+      className="md:top-0 md:h-svh md:pt-[57px]"
     >
       <SidebarHeader>
         <AgentSwitcher currentAgent={currentAgent} allAgents={allAgents} />
