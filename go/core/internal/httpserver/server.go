@@ -47,6 +47,7 @@ const (
 	APIPathFeedback             = "/api/feedback"
 	APIPathLangGraph            = "/api/langgraph"
 	APIPathCrewAI               = "/api/crewai"
+	APIPathScheduledRuns        = "/api/scheduledruns"
 )
 
 var defaultModelConfig = types.NamespacedName{
@@ -56,18 +57,19 @@ var defaultModelConfig = types.NamespacedName{
 
 // ServerConfig holds the configuration for the HTTP server
 type ServerConfig struct {
-	Router            *mux.Router
-	BindAddr          string
-	KubeClient        ctrl_client.Client
-	A2AHandler        a2a.A2AHandlerMux
-	MCPHandler        *mcp.MCPHandler
-	WatchedNamespaces []string
-	DbClient          dbpkg.Client
-	Authenticator     auth.AuthProvider
-	Authorizer        auth.Authorizer
-	ProxyURL          string
-	Reconciler        reconciler.KagentReconciler
-	SandboxBackend    sandboxbackend.Backend
+	Router              *mux.Router
+	BindAddr            string
+	KubeClient          ctrl_client.Client
+	A2AHandler          a2a.A2AHandlerMux
+	MCPHandler          *mcp.MCPHandler
+	WatchedNamespaces   []string
+	DbClient            dbpkg.Client
+	Authenticator       auth.AuthProvider
+	Authorizer          auth.Authorizer
+	ProxyURL            string
+	Reconciler          reconciler.KagentReconciler
+	SandboxBackend      sandboxbackend.Backend
+	ScheduledRunTrigger handlers.ScheduledRunTrigger
 }
 
 // HTTPServer is the structure that manages the HTTP server
@@ -86,7 +88,7 @@ func NewHTTPServer(config ServerConfig) (*HTTPServer, error) {
 	return &HTTPServer{
 		config:        config,
 		router:        config.Router,
-		handlers:      handlers.NewHandlers(config.KubeClient, defaultModelConfig, config.DbClient, config.WatchedNamespaces, config.Authorizer, config.ProxyURL, config.Reconciler, config.SandboxBackend),
+		handlers:      handlers.NewHandlers(config.KubeClient, defaultModelConfig, config.DbClient, config.WatchedNamespaces, config.Authorizer, config.ProxyURL, config.Reconciler, config.SandboxBackend, config.ScheduledRunTrigger),
 		authenticator: config.Authenticator,
 	}, nil
 }
@@ -295,6 +297,14 @@ func (s *HTTPServer) setupRoutes() {
 	s.router.HandleFunc(APIPathCrewAI+"/memory", adaptHandler(s.handlers.CrewAI.HandleResetMemory)).Methods(http.MethodDelete)
 	s.router.HandleFunc(APIPathCrewAI+"/flows/state", adaptHandler(s.handlers.CrewAI.HandleStoreFlowState)).Methods(http.MethodPost)
 	s.router.HandleFunc(APIPathCrewAI+"/flows/state", adaptHandler(s.handlers.CrewAI.HandleGetFlowState)).Methods(http.MethodGet)
+
+	// ScheduledRuns
+	s.router.HandleFunc(APIPathScheduledRuns, adaptHandler(s.handlers.ScheduledRuns.HandleListScheduledRuns)).Methods(http.MethodGet)
+	s.router.HandleFunc(APIPathScheduledRuns, adaptHandler(s.handlers.ScheduledRuns.HandleCreateScheduledRun)).Methods(http.MethodPost)
+	s.router.HandleFunc(APIPathScheduledRuns+"/{namespace}/{name}", adaptHandler(s.handlers.ScheduledRuns.HandleGetScheduledRun)).Methods(http.MethodGet)
+	s.router.HandleFunc(APIPathScheduledRuns+"/{namespace}/{name}", adaptHandler(s.handlers.ScheduledRuns.HandleUpdateScheduledRun)).Methods(http.MethodPut)
+	s.router.HandleFunc(APIPathScheduledRuns+"/{namespace}/{name}", adaptHandler(s.handlers.ScheduledRuns.HandleDeleteScheduledRun)).Methods(http.MethodDelete)
+	s.router.HandleFunc(APIPathScheduledRuns+"/{namespace}/{name}/trigger", adaptHandler(s.handlers.ScheduledRuns.HandleTriggerScheduledRun)).Methods(http.MethodPost)
 
 	// A2A
 	s.router.PathPrefix(APIPathA2A + "/{namespace}/{name}").Handler(s.config.A2AHandler)

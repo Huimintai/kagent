@@ -308,6 +308,62 @@ func TestBuildTemplateContext(t *testing.T) {
 				SkillNames:     nil,
 			},
 		},
+		{
+			name: "inline skills included in SkillNames",
+			agent: &v1alpha2.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "inline-agent",
+					Namespace: "default",
+				},
+				Spec: v1alpha2.AgentSpec{
+					Type:        v1alpha2.AgentType_Declarative,
+					Description: "Agent with inline skills",
+					Declarative: &v1alpha2.DeclarativeAgentSpec{
+						InlineSkills: []v1alpha2.InlineSkill{
+							{Name: "data-analysis", Description: "Analyze data", Content: "# Analysis"},
+							{Name: "code-review", Description: "Review code", Content: "# Review"},
+						},
+					},
+				},
+			},
+			cfg: &adk.AgentConfig{},
+			wantCtx: PromptTemplateContext{
+				AgentName:      "inline-agent",
+				AgentNamespace: "default",
+				Description:    "Agent with inline skills",
+				ToolNames:      nil,
+				SkillNames:     []string{"data-analysis", "code-review"},
+			},
+		},
+		{
+			name: "mixed container and inline skills",
+			agent: &v1alpha2.Agent{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "mixed-agent",
+					Namespace: "default",
+				},
+				Spec: v1alpha2.AgentSpec{
+					Type:        v1alpha2.AgentType_Declarative,
+					Description: "Mixed skills agent",
+					Declarative: &v1alpha2.DeclarativeAgentSpec{
+						InlineSkills: []v1alpha2.InlineSkill{
+							{Name: "inline-skill", Description: "An inline skill", Content: "# Inline"},
+						},
+					},
+					Skills: &v1alpha2.SkillForAgent{
+						Refs: []string{"ghcr.io/org/container-skill:v1"},
+					},
+				},
+			},
+			cfg: &adk.AgentConfig{},
+			wantCtx: PromptTemplateContext{
+				AgentName:      "mixed-agent",
+				AgentNamespace: "default",
+				Description:    "Mixed skills agent",
+				ToolNames:      nil,
+				SkillNames:     []string{"container-skill", "inline-skill"},
+			},
+		},
 	}
 
 	for _, tt := range tests {

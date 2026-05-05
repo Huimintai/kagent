@@ -20,6 +20,8 @@ type Agent struct {
 	Type         string
 	Config       *adk.AgentConfig
 	WorkloadType string
+	UserID       string
+	PrivateMode  bool
 }
 
 type CrewaiAgentMemory struct {

@@ -19,6 +19,11 @@ type Agent struct {
 	Type         string                `json:"type"`
 	WorkloadType v1alpha2.WorkloadMode `json:"workload_type"`
 	Config       *adk.AgentConfig      `json:"config"`
+
+	// UserID and PrivateMode are agent access metadata stored via K8s annotations
+	// and synced to the DB agent record by the reconciler and HTTP handlers.
+	UserID      string `json:"user_id"`
+	PrivateMode bool   `json:"private_mode"`
 }
 
 type Event struct {

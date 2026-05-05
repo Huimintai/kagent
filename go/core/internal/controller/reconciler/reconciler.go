@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/hashicorp/go-multierror"
@@ -942,11 +943,26 @@ func (a *kagentReconciler) upsertAgent(ctx context.Context, agent v1alpha2.Agent
 	if agent.GetWorkloadMode() == v1alpha2.WorkloadModeSandbox {
 		dbType = "SandboxAgent"
 	}
+	userID := utils.DefaultAgentUserID
+	privateMode := false
+	if annotations := agent.GetAnnotations(); annotations != nil {
+		if rawUserID := strings.TrimSpace(annotations[utils.AgentUserIDAnnotation]); rawUserID != "" {
+			userID = rawUserID
+		}
+		if rawPrivateMode, ok := annotations[utils.AgentPrivateModeAnnotation]; ok {
+			if parsedPrivateMode, err := strconv.ParseBool(rawPrivateMode); err == nil {
+				privateMode = parsedPrivateMode
+			}
+		}
+	}
+
 	dbAgent := &database.Agent{
 		ID:           id,
 		Type:         dbType,
 		WorkloadType: agent.GetWorkloadMode(),
 		Config:       agentOutputs.Config,
+		UserID:       userID,
+		PrivateMode:  privateMode,
 	}
 
 	if err := a.dbClient.StoreAgent(ctx, dbAgent); err != nil {
