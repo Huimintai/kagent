@@ -99,6 +99,10 @@ Working Directory & Structure:
 - /skills -> All skills are available here (read-only).
 - Your current working directory and /skills are added to PYTHONPATH.
 
+CLI Tools:
+- CLI tools from container images (e.g., kubectl, helm) are available on PATH.
+- You can invoke them directly by name (e.g., `kubectl get pods`).
+
 Python Imports (CRITICAL):
 - To import from a skill, use the name of the skill.
   Example: from skills_name.module import function
