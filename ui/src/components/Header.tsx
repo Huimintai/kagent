@@ -28,7 +28,7 @@ export function Header() {
   const rightControlsRef = useRef<HTMLDivElement>(null);
   const userId = useUserStore((state) => state.userId);
   const clearLoginSession = useUserStore((state) => state.clearLoginSession);
-  useAppConfig(); // ensure config is loaded
+  const { disableSchedules, disablePromptLibrary } = useAppConfig();
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -103,20 +103,38 @@ export function Header() {
                     New Agent
                   </Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem disabled>
-                  <span className="gap-2 w-full flex items-center text-muted-foreground">
-                    <ScrollText className="h-4 w-4" />
-                    New Prompt Library
-                    <Construction className="ml-auto h-4 w-4" />
-                  </span>
-                </DropdownMenuItem>
-                <DropdownMenuItem disabled>
-                  <span className="gap-2 w-full flex items-center text-muted-foreground">
-                    <Clock className="h-4 w-4" />
-                    New Schedule
-                    <Construction className="ml-auto h-4 w-4" />
-                  </span>
-                </DropdownMenuItem>
+                {disablePromptLibrary ? (
+                  <DropdownMenuItem disabled>
+                    <span className="gap-2 w-full flex items-center text-muted-foreground">
+                      <ScrollText className="h-4 w-4" />
+                      New Prompt Library
+                      <Construction className="ml-auto h-4 w-4" />
+                    </span>
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem asChild>
+                    <Link href="/prompts/new" className="gap-2 cursor-pointer w-full">
+                      <ScrollText className="h-4 w-4" />
+                      New Prompt Library
+                    </Link>
+                  </DropdownMenuItem>
+                )}
+                {disableSchedules ? (
+                  <DropdownMenuItem disabled>
+                    <span className="gap-2 w-full flex items-center text-muted-foreground">
+                      <Clock className="h-4 w-4" />
+                      New Schedule
+                      <Construction className="ml-auto h-4 w-4" />
+                    </span>
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem asChild>
+                    <Link href="/schedules/new" className="gap-2 cursor-pointer w-full">
+                      <Clock className="h-4 w-4" />
+                      New Schedule
+                    </Link>
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
 
@@ -147,20 +165,38 @@ export function Header() {
                     MCP & tools
                   </Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem disabled>
-                  <span className="gap-2 w-full flex items-center text-muted-foreground">
-                    <ScrollText className="h-4 w-4" />
-                    Prompt Library
-                    <Construction className="ml-auto h-4 w-4" />
-                  </span>
-                </DropdownMenuItem>
-                <DropdownMenuItem disabled>
-                  <span className="gap-2 w-full flex items-center text-muted-foreground">
-                    <Clock className="h-4 w-4" />
-                    Schedules
-                    <Construction className="ml-auto h-4 w-4" />
-                  </span>
-                </DropdownMenuItem>
+                {disablePromptLibrary ? (
+                  <DropdownMenuItem disabled>
+                    <span className="gap-2 w-full flex items-center text-muted-foreground">
+                      <ScrollText className="h-4 w-4" />
+                      Prompt Library
+                      <Construction className="ml-auto h-4 w-4" />
+                    </span>
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem asChild>
+                    <Link href="/prompts" className="gap-2 cursor-pointer w-full">
+                      <ScrollText className="h-4 w-4" />
+                      Prompt Library
+                    </Link>
+                  </DropdownMenuItem>
+                )}
+                {disableSchedules ? (
+                  <DropdownMenuItem disabled>
+                    <span className="gap-2 w-full flex items-center text-muted-foreground">
+                      <Clock className="h-4 w-4" />
+                      Schedules
+                      <Construction className="ml-auto h-4 w-4" />
+                    </span>
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem asChild>
+                    <Link href="/schedules" className="gap-2 cursor-pointer w-full">
+                      <Clock className="h-4 w-4" />
+                      Schedules
+                    </Link>
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
 
@@ -231,20 +267,38 @@ export function Header() {
                       MCP & tools
                     </Link>
                   </DropdownMenuItem>
-                  <DropdownMenuItem disabled>
-                    <span className="gap-2 w-full flex items-center text-muted-foreground">
-                      <ScrollText className="h-4 w-4" />
-                      Prompt Library
-                      <Construction className="ml-auto h-4 w-4" />
-                    </span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem disabled>
-                    <span className="gap-2 w-full flex items-center text-muted-foreground">
-                      <Clock className="h-4 w-4" />
-                      Schedules
-                      <Construction className="ml-auto h-4 w-4" />
-                    </span>
-                  </DropdownMenuItem>
+                  {disablePromptLibrary ? (
+                    <DropdownMenuItem disabled>
+                      <span className="gap-2 w-full flex items-center text-muted-foreground">
+                        <ScrollText className="h-4 w-4" />
+                        Prompt Library
+                        <Construction className="ml-auto h-4 w-4" />
+                      </span>
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem asChild onClick={handleMobileLinkClick}>
+                      <Link href="/prompts" className="gap-2 cursor-pointer w-full">
+                        <ScrollText className="h-4 w-4" />
+                        Prompt Library
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {disableSchedules ? (
+                    <DropdownMenuItem disabled>
+                      <span className="gap-2 w-full flex items-center text-muted-foreground">
+                        <Clock className="h-4 w-4" />
+                        Schedules
+                        <Construction className="ml-auto h-4 w-4" />
+                      </span>
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem asChild onClick={handleMobileLinkClick}>
+                      <Link href="/schedules" className="gap-2 cursor-pointer w-full">
+                        <Clock className="h-4 w-4" />
+                        Schedules
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
 
@@ -264,20 +318,38 @@ export function Header() {
                       New Agent
                     </Link>
                   </DropdownMenuItem>
-                  <DropdownMenuItem disabled>
-                    <span className="gap-2 w-full flex items-center text-muted-foreground">
-                      <ScrollText className="h-4 w-4" />
-                      New Prompt Library
-                      <Construction className="ml-auto h-4 w-4" />
-                    </span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem disabled>
-                    <span className="gap-2 w-full flex items-center text-muted-foreground">
-                      <Clock className="h-4 w-4" />
-                      New Schedule
-                      <Construction className="ml-auto h-4 w-4" />
-                    </span>
-                  </DropdownMenuItem>
+                  {disablePromptLibrary ? (
+                    <DropdownMenuItem disabled>
+                      <span className="gap-2 w-full flex items-center text-muted-foreground">
+                        <ScrollText className="h-4 w-4" />
+                        New Prompt Library
+                        <Construction className="ml-auto h-4 w-4" />
+                      </span>
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem asChild onClick={handleMobileLinkClick}>
+                      <Link href="/prompts/new" className="gap-2 cursor-pointer w-full">
+                        <ScrollText className="h-4 w-4" />
+                        New Prompt Library
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {disableSchedules ? (
+                    <DropdownMenuItem disabled>
+                      <span className="gap-2 w-full flex items-center text-muted-foreground">
+                        <Clock className="h-4 w-4" />
+                        New Schedule
+                        <Construction className="ml-auto h-4 w-4" />
+                      </span>
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem asChild onClick={handleMobileLinkClick}>
+                      <Link href="/schedules/new" className="gap-2 cursor-pointer w-full">
+                        <Clock className="h-4 w-4" />
+                        New Schedule
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
 

@@ -356,10 +356,6 @@ function ScheduledRunFormContent() {
                 <Label className="text-base mb-2 block font-bold">
                   Cron Schedule
                 </Label>
-                <p className="text-xs mb-2 block text-muted-foreground">
-                  Standard 5-field cron expression: minute hour day-of-month month day-of-week.
-                  Examples: &quot;0 9 * * 1-5&quot; (weekdays at 9am), &quot;*/30 * * * *&quot; (every 30 min).
-                </p>
                 <Input
                   value={state.schedule}
                   onChange={(e) =>
