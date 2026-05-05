@@ -10,6 +10,7 @@
   - memories
   - remotemcpservers
   - mcpservers
+  - scheduledruns
   verbs:
   - get
   - list
@@ -25,6 +26,7 @@
   - memories/finalizers
   - remotemcpservers/finalizers
   - mcpservers/finalizers
+  - scheduledruns/finalizers
   verbs:
   - update
 - apiGroups:
@@ -38,6 +40,7 @@
   - memories/status
   - remotemcpservers/status
   - mcpservers/status
+  - scheduledruns/status
   verbs:
   - get
   - patch

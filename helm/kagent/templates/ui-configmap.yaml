@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kagent.fullname" . }}-ui-config
+  namespace: {{ include "kagent.namespace" . }}
+  labels:
+    {{- include "kagent.labels" . | nindent 4 }}
+data:
+  KAGENT_ALLOWED_NAMESPACE: {{ .Values.ui.featureFlags.allowedNamespace | quote }}
+  KAGENT_DISABLE_MODEL_CREATION: {{ .Values.ui.featureFlags.disableModelCreation | quote }}
+  KAGENT_MODEL_CREATION_DISABLED_MESSAGE: {{ .Values.ui.featureFlags.modelCreationDisabledMessage | quote }}
+  KAGENT_DISABLE_MCP_SERVER_CREATION: {{ .Values.ui.featureFlags.disableMcpServerCreation | quote }}
+  KAGENT_DISABLE_BYO_AGENT_CREATION: {{ .Values.ui.featureFlags.disableByoAgentCreation | quote }}
+  KAGENT_DISABLE_SANDBOX_CREATION: {{ .Values.ui.featureFlags.disableSandboxCreation | quote }}
+  KAGENT_DISABLE_CLI_CONTAINERS: {{ .Values.ui.featureFlags.disableCliContainers | quote }}
+  KAGENT_DISABLE_PROMPT_LIBRARY: {{ .Values.ui.featureFlags.disablePromptLibrary | quote }}
+  KAGENT_DISABLE_SCHEDULES: {{ .Values.ui.featureFlags.disableSchedules | quote }}
+  KAGENT_PROTECTED_AGENTS: {{ .Values.ui.featureFlags.protectedAgents | quote }}
+  KAGENT_SKILL_CLI_PRESETS: {{ .Values.ui.skillCliPresets | quote }}
