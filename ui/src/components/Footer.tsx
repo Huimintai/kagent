@@ -1,11 +1,13 @@
-import KagentLogo from "./kagent-logo";
-
 export function Footer() {
   return (
-    <footer className="mt-auto py-5">
-      <div className="text-center text-sm text-muted-foreground flex items-center justify-center gap-2">
-        <KagentLogo animate={true} className="h-6 w-6 text-[#942DE7]" />
-        <p>is an open source project</p>
+    <footer className="relative z-20 border-t py-3 bg-background/80 backdrop-blur-md">
+      <div className="w-full px-4 md:px-6 flex items-center justify-between">
+        <p className="text-xs text-muted-foreground">
+          &copy; 2026 SAP SE. All rights reserved.
+        </p>
+        <p className="text-xs text-muted-foreground">
+          DBCI Agentic AI Platform
+        </p>
       </div>
     </footer>
   );

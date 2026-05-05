@@ -100,7 +100,7 @@ export interface ModelConfigSpec {
   geminiVertexAI?: GeminiVertexAIConfig;
   anthropicVertexAI?: AnthropicVertexAIConfig;
   bedrock?: BedrockConfig;
-  sapAICore?: SAPAICoreConfigPayload;
+  sapAICore?: SAPAICoreConfig;
 }
 
 export interface ModelConfig {
@@ -154,6 +154,12 @@ export interface ConfiguredModelProvider {
 export interface ConfiguredModelProviderModelsResponse {
   provider: string;
   models: string[];
+}
+
+export interface SAPAICoreConfig {
+  baseUrl: string;
+  resourceGroup?: string;
+  authUrl?: string;
 }
 
 export interface SecretMaterial {
@@ -233,9 +239,8 @@ export interface ToolsResponse {
 export interface ResourceMetadata {
   name: string;
   namespace?: string;
-  /** ISO/RFC3339 from Kubernetes `metadata.creationTimestamp` */
-  creationTimestamp?: string;
-  resourceVersion?: string;
+  annotations?: Record<string, string>;
+  labels?: Record<string, string>;
 }
 
 export type ToolProviderType = "McpServer" | "Agent"
@@ -256,6 +261,8 @@ export interface TypedLocalReference {
 export interface McpServerTool extends TypedLocalReference {
   toolNames: string[];
   requireApproval?: string[];
+  allowedHeaders?: string[];
+  sessionTokenLabel?: string;
 }
 
 export type AgentType = "Declarative" | "BYO" | "Sandbox";
@@ -281,6 +288,12 @@ export interface SandboxAgent {
   kind?: string;
   metadata: ResourceMetadata;
   spec: AgentSpec;
+}
+
+export interface InlineSkill {
+  name: string;
+  description: string;
+  content: string;
 }
 
 export interface AgentSpec {
@@ -314,12 +327,14 @@ export interface PromptTemplateSummary {
   keyCount: number;
   /** Fragment keys per library (for @ include picker). */
   keys?: string[];
+  userId?: string;
 }
 
 export interface PromptTemplateDetail {
   namespace: string;
   name: string;
   data: Record<string, string>;
+  userId?: string;
 }
 
 /** Which ADK implementation runs the agent (Kubernetes `spec.declarative.runtime`). */
@@ -340,6 +355,8 @@ export interface DeclarativeAgentSpec {
   memory?: MemorySpec;
   /** When set, systemMessage is rendered as a Go text/template with includes and variables. */
   promptTemplate?: PromptTemplateSpec;
+  /** Inline prompt-based skills (no container required). */
+  inlineSkills?: InlineSkill[];
 }
 
 export interface ContextConfig {
@@ -421,6 +438,8 @@ export interface Agent {
 export interface AgentResponse {
   id: number;
   agent: Agent;
+  user_id?: string;
+  private_mode?: boolean;
   model: string;
   modelProvider: string;
   modelConfigRef: string;
@@ -613,4 +632,57 @@ export interface AdkRequestConfirmationData {
   name: string;
   id: string;
   args: HitlRequestConfirmationArgs;
+}
+
+// ---------------------------------------------------------------------------
+// ScheduledRun types
+// ---------------------------------------------------------------------------
+
+export type ConcurrencyPolicy = "Forbid" | "Allow" | "Replace";
+export type RunStatusType = "Succeeded" | "Failed" | "Running";
+
+export interface ScheduledRunAgentRef {
+  name: string;
+  namespace?: string;
+}
+
+export interface ScheduledRunSpec {
+  schedule: string;
+  agentRef: ScheduledRunAgentRef;
+  prompt: string;
+  suspend?: boolean;
+  concurrencyPolicy?: ConcurrencyPolicy;
+  maxRunHistory?: number;
+}
+
+export interface RunHistoryEntry {
+  startTime: string;
+  completionTime?: string;
+  status: RunStatusType;
+  sessionId?: string;
+  message?: string;
+}
+
+export interface ScheduledRunCondition {
+  type: string;
+  status: string;
+  reason?: string;
+  message?: string;
+}
+
+export interface ScheduledRunStatus {
+  lastRunTime?: string;
+  nextRunTime?: string;
+  active: number;
+  runHistory?: RunHistoryEntry[];
+  conditions?: ScheduledRunCondition[];
+  observedGeneration?: number;
+}
+
+export interface ScheduledRun {
+  apiVersion?: string;
+  kind?: string;
+  metadata: ResourceMetadata;
+  spec: ScheduledRunSpec;
+  status?: ScheduledRunStatus;
 }

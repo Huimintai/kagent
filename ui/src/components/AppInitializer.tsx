@@ -1,23 +1,18 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
-import { OnboardingWizard } from "./onboarding/OnboardingWizard";
+import React, { useState, useEffect } from 'react';
+import { usePathname } from 'next/navigation';
+import { OnboardingWizard } from './onboarding/OnboardingWizard';
 
-const LOCAL_STORAGE_KEY = "kagent-onboarding";
+const LOCAL_STORAGE_KEY = 'kagent-onboarding';
 
 export function AppInitializer({ children }: { children: React.ReactNode }) {
-  /** `null` = not read yet (must match server + first client paint to avoid hydration mismatch) */
   const [isOnboarding, setIsOnboarding] = useState<boolean | null>(null);
   const pathname = usePathname();
 
   useEffect(() => {
-    const hasOnboarded = localStorage.getItem(LOCAL_STORAGE_KEY) === "true";
-    // Defer so this isn’t a synchronous setState in the effect body (react-hooks/set-state-in-effect).
-    const id = requestAnimationFrame(() => {
-      setIsOnboarding(!hasOnboarded);
-    });
-    return () => cancelAnimationFrame(id);
+    const hasOnboarded = localStorage.getItem(LOCAL_STORAGE_KEY);
+    setIsOnboarding(hasOnboarded !== 'true');
   }, []);
 
   const handleOnboardingComplete = () => {
@@ -41,4 +36,4 @@ export function AppInitializer({ children }: { children: React.ReactNode }) {
   }
 
   return <>{children}</>;
-} 
+}
