@@ -3,7 +3,7 @@
 
 # Image configuration
 DOCKER_REGISTRY ?= localhost:5001
-BASE_IMAGE_REGISTRY ?= cgr.dev
+BASE_IMAGE ?= alpine:3.23
 DOCKER_REPO ?= kagent-dev/kagent
 HELM_REPO ?= oci://ghcr.io/kagent-dev
 HELM_DIST_FOLDER ?= dist
@@ -14,6 +14,11 @@ VERSION ?= $(shell git describe --tags --always 2>/dev/null | grep v || echo "v0
 
 # Local architecture detection to build for the current platform
 LOCALARCH ?= $(shell uname -m | sed 's/x86_64/amd64/' | sed 's/aarch64/arm64/')
+
+# Build mode: "docker" (default) builds inside Docker; "local" compiles on host then thin image
+BUILD_MODE ?= docker
+# Target architecture for cross-compilation (default: same as host)
+TARGETARCH ?= $(LOCALARCH)
 
 KUBECONFIG_PERM ?= $(shell \
   if [ "$$(uname -s | tr '[:upper:]' '[:lower:]')" = "darwin" ]; then \
@@ -33,6 +38,7 @@ DOCKER_BUILD_ARGS ?= --push --platform linux/$(LOCALARCH)
 
 KIND_CLUSTER_NAME ?= kagent
 KIND_IMAGE_VERSION ?= 1.35.0
+KUBE_CONTEXT ?= kind-$(KIND_CLUSTER_NAME)
 
 CONTROLLER_IMAGE_NAME ?= controller
 UI_IMAGE_NAME ?= ui
@@ -76,7 +82,7 @@ TOOLS_IMAGE_BUILD_ARGS =  --build-arg VERSION=$(VERSION)
 TOOLS_IMAGE_BUILD_ARGS += --build-arg LDFLAGS=$(LDFLAGS)
 TOOLS_IMAGE_BUILD_ARGS += --build-arg DOCKER_REPO=$(DOCKER_REPO)
 TOOLS_IMAGE_BUILD_ARGS += --build-arg DOCKER_REGISTRY=$(DOCKER_REGISTRY)
-TOOLS_IMAGE_BUILD_ARGS += --build-arg BASE_IMAGE_REGISTRY=$(BASE_IMAGE_REGISTRY)
+TOOLS_IMAGE_BUILD_ARGS += --build-arg BASE_IMAGE=$(BASE_IMAGE)
 TOOLS_IMAGE_BUILD_ARGS += --build-arg TOOLS_GO_VERSION=$(TOOLS_GO_VERSION)
 TOOLS_IMAGE_BUILD_ARGS += --build-arg TOOLS_UV_VERSION=$(TOOLS_UV_VERSION)
 TOOLS_IMAGE_BUILD_ARGS += --build-arg TOOLS_PYTHON_VERSION=$(TOOLS_PYTHON_VERSION)
@@ -153,6 +159,8 @@ check-api-key:
 		fi; \
 	elif [ "$(KAGENT_DEFAULT_MODEL_PROVIDER)" = "ollama" ]; then \
 		echo "Note: Ollama provider does not require an API key"; \
+	elif [ "$(KAGENT_DEFAULT_MODEL_PROVIDER)" = "SAPAICore" ]; then \
+		echo "Note: SAPAICore uses service key secret, skipping API key check"; \
 	else \
 		echo "Warning: Unknown model provider '$(KAGENT_DEFAULT_MODEL_PROVIDER)'. Skipping API key check."; \
 	fi
@@ -221,7 +229,12 @@ prune-docker-images:
 	docker images --filter dangling=true -q | xargs -r docker rmi || :
 
 .PHONY: build
+.PHONY: build
+ifeq ($(BUILD_MODE),local)
+build: build-controller build-ui build-app build-golang-adk build-skills-init
+else
 build: buildx-create build-controller build-ui build-app build-golang-adk build-golang-adk-full build-skills-init
+endif
 	@echo "Build completed successfully."
 	@echo "Controller Image: $(CONTROLLER_IMG)"
 	@echo "UI Image: $(UI_IMG)"
@@ -268,33 +281,123 @@ controller-manifests:
 	make -C go manifests
 	cp go/api/config/crd/bases/* helm/kagent-crds/templates/
 
+##@ Local compilation (BUILD_MODE=local)
+
+.PHONY: _compile-controller
+_compile-controller:
+	mkdir -p .local-build
+	cd go && CGO_ENABLED=0 GOOS=linux GOARCH=$(TARGETARCH) go build -ldflags $(LDFLAGS) -o ../.local-build/app core/cmd/controller/main.go
+
+.PHONY: _compile-golang-adk
+_compile-golang-adk:
+	mkdir -p .local-build
+	cd go && CGO_ENABLED=0 GOOS=linux GOARCH=$(TARGETARCH) go build -ldflags $(LDFLAGS) -o ../.local-build/app adk/cmd/main.go
+
+.PHONY: _compile-skills-init
+_compile-skills-init:
+	mkdir -p docker/skills-init/bin
+	cd docker/skills-init && test -d go-containerregistry || \
+		git clone --depth 1 --branch v0.21.2 https://github.com/google/go-containerregistry.git
+	cd docker/skills-init/go-containerregistry/cmd/krane && \
+		CGO_ENABLED=0 GOOS=linux GOARCH=$(TARGETARCH) go build -trimpath -ldflags="-s -w" -o ../../../bin/krane .
+
+.PHONY: _compile-ui
+_compile-ui:
+	cd ui && npm ci --legacy-peer-deps && npx next build --webpack
+	@# Stage the build output to .local-build/ui/ (avoids .dockerignore excluding .next/)
+	@rm -rf .local-build/ui
+	@mkdir -p .local-build/ui/.next
+	@# Flatten the standalone directory: Next.js nests it under the CWD path
+	@APP_DIR=$$(find ui/.next/standalone -maxdepth 5 -name "server.js" -exec sh -c 'test -d "$$(dirname $$1)/.next" && dirname $$1' _ {} \;) && \
+		if [ -n "$$APP_DIR" ] && [ "$$APP_DIR" != "ui/.next/standalone" ]; then \
+			echo "Flattening standalone from $$APP_DIR"; \
+			cp -a "$$APP_DIR"/. .local-build/ui/.next/standalone/; \
+		else \
+			cp -a ui/.next/standalone .local-build/ui/.next/standalone; \
+		fi
+	@cp -a ui/.next/static .local-build/ui/.next/static
+	@cp ui/next.config.ts .local-build/ui/
+	@cp ui/package.json .local-build/ui/
+	@cp -a ui/public .local-build/ui/public
+	@cp -a ui/conf .local-build/ui/conf
+	@cp -a ui/scripts .local-build/ui/scripts
+
+# Helper: build thin image and push (used by BUILD_MODE=local targets)
+define docker-build-local
+	docker build --platform linux/$(TARGETARCH) --build-arg VERSION=$(VERSION) $(2) -t $(1) -f $(3) $(4)
+	docker push $(1)
+endef
+
 .PHONY: build-controller
-build-controller: buildx-create controller-manifests
+build-controller: controller-manifests
+ifeq ($(BUILD_MODE),local)
+build-controller: _compile-controller
+	$(call docker-build-local,$(CONTROLLER_IMG),,go/Dockerfile.local,./.local-build)
+else
+build-controller: buildx-create
 	$(DOCKER_BUILDER) build $(DOCKER_BUILD_ARGS) $(TOOLS_IMAGE_BUILD_ARGS) --build-arg BUILD_PACKAGE=core/cmd/controller/main.go -t $(CONTROLLER_IMG) -f go/Dockerfile ./go
+endif
 
 .PHONY: build-ui
+ifeq ($(BUILD_MODE),local)
+build-ui: _compile-ui
+	$(call docker-build-local,$(UI_IMG),--build-arg TOOLS_NODE_VERSION=$(TOOLS_NODE_VERSION),ui/Dockerfile.local,./.local-build/ui)
+else
 build-ui: buildx-create
 	$(DOCKER_BUILDER) build $(DOCKER_BUILD_ARGS) $(TOOLS_IMAGE_BUILD_ARGS) -t $(UI_IMG) -f ui/Dockerfile ./ui
+endif
 
 .PHONY: build-kagent-adk
+ifeq ($(BUILD_MODE),local)
+build-kagent-adk:
+	docker build --platform linux/$(TARGETARCH) $(TOOLS_IMAGE_BUILD_ARGS) -t $(KAGENT_ADK_IMG) -f python/Dockerfile ./python
+	docker push $(KAGENT_ADK_IMG)
+else
 build-kagent-adk: buildx-create
 		$(DOCKER_BUILDER) build $(DOCKER_BUILD_ARGS) $(TOOLS_IMAGE_BUILD_ARGS) -t $(KAGENT_ADK_IMG) -f python/Dockerfile ./python
+endif
 
 .PHONY: build-app
+ifeq ($(BUILD_MODE),local)
+build-app: build-kagent-adk
+	docker build --platform linux/$(TARGETARCH) $(TOOLS_IMAGE_BUILD_ARGS) --build-arg KAGENT_ADK_VERSION=$(KAGENT_ADK_IMAGE_TAG) --build-arg DOCKER_REGISTRY=$(DOCKER_REGISTRY) -t $(APP_IMG) -f python/Dockerfile.app ./python
+	docker push $(APP_IMG)
+else
 build-app: buildx-create build-kagent-adk
 	$(DOCKER_BUILDER) build $(DOCKER_BUILD_ARGS) $(TOOLS_IMAGE_BUILD_ARGS) --build-arg KAGENT_ADK_VERSION=$(KAGENT_ADK_IMAGE_TAG) --build-arg DOCKER_REGISTRY=$(DOCKER_REGISTRY) -t $(APP_IMG) -f python/Dockerfile.app ./python
+endif
 
 .PHONY: build-golang-adk
+ifeq ($(BUILD_MODE),local)
+build-golang-adk: _compile-golang-adk
+	$(call docker-build-local,$(GOLANG_ADK_IMG),,go/Dockerfile.local,./.local-build)
+else
 build-golang-adk: buildx-create
 	$(DOCKER_BUILDER) build $(DOCKER_BUILD_ARGS) $(TOOLS_IMAGE_BUILD_ARGS) --build-arg BUILD_PACKAGE=adk/cmd/main.go -t $(GOLANG_ADK_IMG) -f go/Dockerfile ./go
+endif
+
+.PHONY: build-golang-adk-full
+ifeq ($(BUILD_MODE),local)
+build-golang-adk-full: _compile-golang-adk
+	$(call docker-build-local,$(GOLANG_ADK_FULL_IMG),,go/Dockerfile.local,./.local-build)
+else
+build-golang-adk-full: buildx-create
+	$(DOCKER_BUILDER) build $(DOCKER_BUILD_ARGS) $(TOOLS_IMAGE_BUILD_ARGS) --build-arg BUILD_PACKAGE=adk/cmd/main.go -t $(GOLANG_ADK_FULL_IMG) -f go/Dockerfile.full ./go
+endif
+
 
 .PHONY: build-golang-adk-full
 build-golang-adk-full: buildx-create
 	$(DOCKER_BUILDER) build $(DOCKER_BUILD_ARGS) $(TOOLS_IMAGE_BUILD_ARGS) --build-arg BUILD_PACKAGE=adk/cmd/main.go -t $(GOLANG_ADK_FULL_IMG) -f go/Dockerfile.full ./go
 
 .PHONY: build-skills-init
+ifeq ($(BUILD_MODE),local)
+build-skills-init: _compile-skills-init
+	$(call docker-build-local,$(SKILLS_INIT_IMG),,docker/skills-init/Dockerfile.local,./docker/skills-init)
+else
 build-skills-init: buildx-create
 	$(DOCKER_BUILDER) build $(DOCKER_BUILD_ARGS) -t $(SKILLS_INIT_IMG) -f docker/skills-init/Dockerfile docker/skills-init
+endif
 
 .PHONY: helm-cleanup
 helm-cleanup:
@@ -357,7 +460,7 @@ helm-install-provider: helm-version check-api-key
 		--create-namespace \
 		--history-max 2    \
 		--timeout 5m 			\
-		--kube-context kind-$(KIND_CLUSTER_NAME) \
+		--kube-context $(KUBE_CONTEXT) \
 		--wait \
 		--set kmcp.enabled=$(KMCP_ENABLED)
 	helm $(HELM_ACTION) kagent helm/kagent \
@@ -365,7 +468,7 @@ helm-install-provider: helm-version check-api-key
 		--create-namespace \
 		--history-max 2    \
 		--timeout 5m       \
-		--kube-context kind-$(KIND_CLUSTER_NAME) \
+		--kube-context $(KUBE_CONTEXT) \
 		--wait \
 		--set ui.service.type=LoadBalancer \
 		--set registry=$(DOCKER_REGISTRY) \
@@ -401,8 +504,8 @@ helm-test-install: helm-install-provider
 
 .PHONY: helm-uninstall
 helm-uninstall:
-	helm uninstall kagent --namespace kagent --kube-context kind-$(KIND_CLUSTER_NAME) --wait
-	helm uninstall kagent-crds --namespace kagent --kube-context kind-$(KIND_CLUSTER_NAME) --wait
+	helm uninstall kagent --namespace kagent --kube-context $(KUBE_CONTEXT) --wait
+	helm uninstall kagent-crds --namespace kagent --kube-context $(KUBE_CONTEXT) --wait
 
 .PHONY: helm-publish
 helm-publish: helm-version

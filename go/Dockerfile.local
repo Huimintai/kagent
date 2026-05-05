@@ -1,0 +1,13 @@
+### Runtime-only image for local builds
+### Expects pre-built binary at app (in build context)
+FROM gcr.io/distroless/static:nonroot
+WORKDIR /
+COPY app /app
+USER 65532:65532
+ARG VERSION
+
+LABEL org.opencontainers.image.source=https://github.com/kagent-dev/kagent
+LABEL org.opencontainers.image.description="Kagent controller (local build)"
+LABEL org.opencontainers.image.version="$VERSION"
+
+ENTRYPOINT ["/app"]
