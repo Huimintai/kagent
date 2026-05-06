@@ -223,6 +223,7 @@ export interface Session {
   created_at: string;
   updated_at: string;
   deleted_at: string;
+  pinned?: boolean;
 }
 
 export interface ToolsResponse {

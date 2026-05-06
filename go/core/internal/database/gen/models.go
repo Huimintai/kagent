@@ -125,6 +125,7 @@ type Session struct {
 	DeletedAt *time.Time
 	AgentID   *string
 	Source    *string
+	Pinned    bool
 }
 
 type Task struct {

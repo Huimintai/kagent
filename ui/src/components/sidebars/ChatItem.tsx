@@ -9,11 +9,12 @@ import {
   AlertDialogHeader,
   AlertDialogFooter,
 } from "@/components/ui/alert-dialog";
-import { MoreHorizontal, Trash2, Download } from "lucide-react";
+import { MoreHorizontal, Trash2, Download, Pin } from "lucide-react";
 import { SidebarMenu, SidebarMenuAction, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import Link from "next/link";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "../ui/button";
+import { usePathname } from "next/navigation";
 
 interface ChatItemProps {
   sessionId: string;
@@ -25,11 +26,17 @@ interface ChatItemProps {
   createdAt?: string;
   /** When true, omit delete (e.g. Sandbox single-session agents). */
   hideDelete?: boolean;
+  pinned?: boolean;
+  canPin?: boolean;
+  onPin?: (sessionId: string, pinned: boolean) => Promise<void>;
 }
 
-const ChatItem = ({ sessionId, agentName, agentNamespace, onDelete, sessionName, onDownload, createdAt, hideDelete }: ChatItemProps) => {
+const ChatItem = ({ sessionId, agentName, agentNamespace, onDelete, sessionName, onDownload, createdAt, hideDelete, pinned, canPin, onPin }: ChatItemProps) => {
   const title = sessionName || "Untitled";
-  
+  const pathname = usePathname();
+  const href = `/agents/${agentNamespace}/${agentName}/chat/${sessionId}`;
+  const isActive = pathname === href;
+
   // Format timestamp based on how recent it is
   const formatTime = (dateString?: string) => {
     if (!dateString) return "";
@@ -38,23 +45,24 @@ const ChatItem = ({ sessionId, agentName, agentNamespace, onDelete, sessionName,
 
     const now = new Date();
     const isToday = date.toDateString() === now.toDateString();
-    
+
     // For today: just show time (e.g., "2:30 PM" or "14:30" based on locale)
     if (isToday) {
       return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     }
-    
+
     // For older: show full date and time (e.g., "Nov 28, 2:30 PM" based on locale)
-    return date.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ', ' + 
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ', ' +
            date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   };
-  
+
   return (
     <>
       <SidebarMenu>
         <SidebarMenuItem key={sessionId}>
-          <SidebarMenuButton asChild className="overflow-hidden relative group/chatitem">
-            <Link href={`/agents/${agentNamespace}/${agentName}/chat/${sessionId}`} className="flex items-center w-full">
+          <SidebarMenuButton asChild className="overflow-hidden relative group/chatitem" isActive={isActive}>
+            <Link href={href} className="flex items-center w-full">
+              {pinned === true && <Pin className="h-3 w-3 shrink-0 mr-1" />}
               <span className="text-sm whitespace-nowrap" title={title}>{title}</span>
               <span className="absolute right-8 top-1/2 -translate-y-1/2 text-xs text-muted-foreground whitespace-nowrap pl-6"
                 style={{
@@ -83,6 +91,22 @@ const ChatItem = ({ sessionId, agentName, agentNamespace, onDelete, sessionName,
                   <span>Download</span>
                 </Button>
               </DropdownMenuItem>
+              {canPin && !pinned && (
+                <DropdownMenuItem onSelect={() => onPin?.(sessionId, true)} className="p-0">
+                  <Button variant={"ghost"} className="w-full justify-start px-2 py-1.5">
+                    <Pin className="mr-2 h-4 w-4" />
+                    <span>Pin</span>
+                  </Button>
+                </DropdownMenuItem>
+              )}
+              {canPin && pinned && (
+                <DropdownMenuItem onSelect={() => onPin?.(sessionId, false)} className="p-0">
+                  <Button variant={"ghost"} className="w-full justify-start px-2 py-1.5">
+                    <Pin className="mr-2 h-4 w-4" />
+                    <span>Unpin</span>
+                  </Button>
+                </DropdownMenuItem>
+              )}
               {!hideDelete && (
               <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="p-0">
                 <AlertDialog>

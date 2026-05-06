@@ -158,6 +158,7 @@ type SessionRequest struct {
 	Name     *string                 `json:"name,omitempty"`
 	ID       *string                 `json:"id,omitempty"`
 	Source   *database.SessionSource `json:"source,omitempty"`
+	Pinned   *bool                   `json:"pinned,omitempty"`
 }
 
 // Run types
