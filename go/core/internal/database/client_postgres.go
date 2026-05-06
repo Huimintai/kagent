@@ -87,6 +87,7 @@ func (c *postgresClient) StoreSession(ctx context.Context, session *dbpkg.Sessio
 			UserID:  session.UserID,
 			Name:    session.Name,
 			AgentID: session.AgentID,
+			Pinned:  session.Pinned,
 		}
 		if session.Source != nil {
 			src := string(*session.Source)
@@ -100,6 +101,14 @@ func (c *postgresClient) GetSession(ctx context.Context, sessionID, userID strin
 	row, err := c.q.GetSession(ctx, dbgen.GetSessionParams{ID: sessionID, UserID: userID})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get session %s: %w", sessionID, err)
+	}
+	return toSession(row), nil
+}
+
+func (c *postgresClient) GetPinnedSession(ctx context.Context, sessionID string) (*dbpkg.Session, error) {
+	row, err := c.q.GetPinnedSession(ctx, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get pinned session %s: %w", sessionID, err)
 	}
 	return toSession(row), nil
 }
@@ -721,6 +730,7 @@ func toSession(r dbgen.Session) *dbpkg.Session {
 		UpdatedAt: derefTime(r.UpdatedAt),
 		DeletedAt: r.DeletedAt,
 		AgentID:   r.AgentID,
+		Pinned:    r.Pinned,
 	}
 	if r.Source != nil {
 		src := dbpkg.SessionSource(*r.Source)

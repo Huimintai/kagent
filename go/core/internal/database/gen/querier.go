@@ -16,6 +16,7 @@ type Querier interface {
 	GetCheckpoint(ctx context.Context, arg GetCheckpointParams) (LgCheckpoint, error)
 	GetEvent(ctx context.Context, arg GetEventParams) (Event, error)
 	GetLatestCrewAIFlowState(ctx context.Context, arg GetLatestCrewAIFlowStateParams) (CrewaiFlowState, error)
+	GetPinnedSession(ctx context.Context, id string) (Session, error)
 	GetPushNotification(ctx context.Context, arg GetPushNotificationParams) (PushNotification, error)
 	GetSession(ctx context.Context, arg GetSessionParams) (Session, error)
 	GetTask(ctx context.Context, id string) (Task, error)

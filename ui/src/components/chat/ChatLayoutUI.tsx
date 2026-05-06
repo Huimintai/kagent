@@ -15,6 +15,8 @@ interface ChatLayoutUIProps {
   currentAgent: AgentResponse;
   allAgents: AgentResponse[];
   allTools: RemoteMCPServerResponse[];
+  /** Resolved on the server and passed down so the client bundle never imports next/headers. */
+  currentUserId: string;
   children: React.ReactNode;
 }
 
@@ -24,6 +26,7 @@ export default function ChatLayoutUI({
   currentAgent,
   allAgents,
   allTools,
+  currentUserId,
   children
 }: ChatLayoutUIProps) {
   const pathname = usePathname();
@@ -49,7 +52,7 @@ export default function ChatLayoutUI({
     return tools;
   }, [allTools]);
 
-  
+
   useEffect(() => {
     const refreshSessions = async () => {
       setIsLoadingSessions(true);
@@ -69,7 +72,7 @@ export default function ChatLayoutUI({
       }
     };
     refreshSessions();
-    // Same agent may navigate /chat → /chat/:id (e.g. Sandbox); refetch so the sidebar lists the session.
+    // Same agent may navigate /chat -> /chat/:id (e.g. Sandbox); refetch so the sidebar lists the session.
   }, [agentName, namespace, pathname]);
 
   useEffect(() => {
@@ -104,6 +107,7 @@ export default function ChatLayoutUI({
         allAgents={allAgents}
         agentSessions={sessions}
         isLoadingSessions={isLoadingSessions}
+        currentUserId={currentUserId}
       />
       <main className="w-full max-w-6xl mx-auto px-4">
         <ChatAgentProvider
@@ -120,4 +124,4 @@ export default function ChatLayoutUI({
       />
     </>
   );
-} 
+}

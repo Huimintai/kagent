@@ -14,18 +14,20 @@ interface SessionsSidebarProps {
   allAgents: AgentResponse[];
   agentSessions: Session[];
   isLoadingSessions?: boolean;
+  currentUserId: string;
 }
 
-export default function SessionsSidebar({ 
-  agentName, 
+export default function SessionsSidebar({
+  agentName,
   agentNamespace,
-  currentAgent, 
-  allAgents, 
-  agentSessions, 
-  isLoadingSessions = false 
+  currentAgent,
+  allAgents,
+  agentSessions,
+  isLoadingSessions = false,
+  currentUserId
 }: SessionsSidebarProps) {
     return (
-    <Sidebar 
+    <Sidebar
       side="left"
       collapsible="offcanvas"
       className="md:top-0 md:h-svh md:pt-[57px]"
@@ -47,6 +49,8 @@ export default function SessionsSidebar({
               sessions={agentSessions}
               hideNewChat={currentAgent.workloadMode === "sandbox"}
               hideSessionDelete={currentAgent.workloadMode === "sandbox"}
+              currentAgent={currentAgent}
+              currentUserId={currentUserId}
             />
           )}
         </ScrollArea>

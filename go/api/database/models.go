@@ -79,6 +79,7 @@ type Session struct {
 	// Source indicates how this session was created.
 	// SessionSourceUser = user-initiated, SessionSourceAgent = created by a parent agent's A2A call.
 	Source *SessionSource `json:"source,omitempty"`
+	Pinned bool           `json:"pinned"`
 }
 
 type Task struct {
