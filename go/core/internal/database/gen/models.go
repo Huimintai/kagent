@@ -155,4 +155,5 @@ type Toolserver struct {
 	DeletedAt     *time.Time
 	Description   *string
 	LastConnected *time.Time
+	UserID        *string
 }

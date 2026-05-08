@@ -36,11 +36,12 @@ WHERE deleted_at IS NULL
 ORDER BY created_at ASC;
 
 -- name: UpsertToolServer :one
-INSERT INTO toolserver (name, group_kind, description, last_connected, created_at, updated_at)
-VALUES ($1, $2, $3, $4, NOW(), NOW())
+INSERT INTO toolserver (name, group_kind, description, last_connected, user_id, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
 ON CONFLICT (name, group_kind) DO UPDATE SET
     description    = EXCLUDED.description,
     last_connected = EXCLUDED.last_connected,
+    user_id        = COALESCE(EXCLUDED.user_id, toolserver.user_id),
     updated_at     = NOW(),
     deleted_at     = NULL
 RETURNING *;

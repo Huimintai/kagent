@@ -195,6 +195,7 @@ type ToolServerResponse struct {
 	Ref             string              `json:"ref"`
 	GroupKind       string              `json:"groupKind"`
 	DiscoveredTools []*v1alpha2.MCPTool `json:"discoveredTools"`
+	UserID          string              `json:"userId,omitempty"`
 }
 
 // Memory types

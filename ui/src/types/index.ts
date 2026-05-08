@@ -499,6 +499,7 @@ export interface RemoteMCPServerResponse {
   ref: string; // namespace/name
   groupKind: string;
   discoveredTools: DiscoveredTool[];
+  userId?: string;
 }
 
 // MCPServer types for stdio-based servers
@@ -535,6 +536,7 @@ export interface MCPServerResponse {
   ref: string; // namespace/name
   groupKind: string;
   discoveredTools: DiscoveredTool[];
+  userId?: string;
 }
 
 // Union type for tool server responses

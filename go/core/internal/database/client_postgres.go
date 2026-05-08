@@ -404,6 +404,7 @@ func (c *postgresClient) StoreToolServer(ctx context.Context, ts *dbpkg.ToolServ
 		GroupKind:     ts.GroupKind,
 		Description:   &ts.Description,
 		LastConnected: ts.LastConnected,
+		UserID:        ts.UserID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to store tool server: %w", err)
@@ -797,6 +798,7 @@ func toToolServer(r dbgen.Toolserver) *dbpkg.ToolServer {
 		DeletedAt:     r.DeletedAt,
 		Description:   derefStr(r.Description),
 		LastConnected: r.LastConnected,
+		UserID:        r.UserID,
 	}
 }
 

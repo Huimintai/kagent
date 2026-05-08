@@ -103,6 +103,12 @@ export function Header() {
                     New Agent
                   </Link>
                 </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/mcp/new" className="gap-2 cursor-pointer w-full">
+                    <Server className="h-4 w-4" />
+                    New MCP Server
+                  </Link>
+                </DropdownMenuItem>
                 {disablePromptLibrary ? (
                   <DropdownMenuItem disabled>
                     <span className="gap-2 w-full flex items-center text-muted-foreground">
@@ -316,6 +322,12 @@ export function Header() {
                     <Link href="/agents/new" className="gap-2 cursor-pointer w-full">
                       <KagentLogo className="h-4 w-4 text-primary" />
                       New Agent
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild onClick={handleMobileLinkClick}>
+                    <Link href="/mcp/new" className="gap-2 cursor-pointer w-full">
+                      <Server className="h-4 w-4" />
+                      New MCP Server
                     </Link>
                   </DropdownMenuItem>
                   {disablePromptLibrary ? (
