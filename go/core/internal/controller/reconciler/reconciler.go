@@ -524,6 +524,9 @@ func (a *kagentReconciler) ReconcileKagentMCPServer(ctx context.Context, req ctr
 		Description: "N/A",
 		GroupKind:   schema.GroupKind{Group: "kagent.dev", Kind: "MCPServer"}.String(),
 	}
+	if uid := strings.TrimSpace(mcpServer.GetAnnotations()[utils.AgentUserIDAnnotation]); uid != "" {
+		dbServer.UserID = &uid
+	}
 
 	// Convert MCPServer to RemoteMCPServer spec
 	remoteSpec, err := agent_translator.ConvertMCPServerToRemoteMCPServer(mcpServer)
@@ -575,6 +578,9 @@ func (a *kagentReconciler) ReconcileKagentRemoteMCPServer(ctx context.Context, r
 		Name:        serverRef,
 		Description: server.Spec.Description,
 		GroupKind:   server.GroupVersionKind().GroupKind().String(),
+	}
+	if uid := strings.TrimSpace(server.GetAnnotations()[utils.AgentUserIDAnnotation]); uid != "" {
+		dbServer.UserID = &uid
 	}
 
 	tools, err := a.upsertToolServerForRemoteMCPServer(ctx, dbServer, server)

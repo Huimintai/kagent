@@ -32,7 +32,7 @@ func (q *Queries) GetTool(ctx context.Context, id string) (Tool, error) {
 }
 
 const getToolServer = `-- name: GetToolServer :one
-SELECT name, group_kind, created_at, updated_at, deleted_at, description, last_connected FROM toolserver
+SELECT name, group_kind, created_at, updated_at, deleted_at, description, last_connected, user_id FROM toolserver
 WHERE name = $1 AND deleted_at IS NULL
 LIMIT 1
 `
@@ -48,12 +48,13 @@ func (q *Queries) GetToolServer(ctx context.Context, name string) (Toolserver, e
 		&i.DeletedAt,
 		&i.Description,
 		&i.LastConnected,
+		&i.UserID,
 	)
 	return i, err
 }
 
 const listToolServers = `-- name: ListToolServers :many
-SELECT name, group_kind, created_at, updated_at, deleted_at, description, last_connected FROM toolserver
+SELECT name, group_kind, created_at, updated_at, deleted_at, description, last_connected, user_id FROM toolserver
 WHERE deleted_at IS NULL
 ORDER BY created_at ASC
 `
@@ -75,6 +76,7 @@ func (q *Queries) ListToolServers(ctx context.Context) ([]Toolserver, error) {
 			&i.DeletedAt,
 			&i.Description,
 			&i.LastConnected,
+			&i.UserID,
 		); err != nil {
 			return nil, err
 		}
@@ -216,14 +218,15 @@ func (q *Queries) UpsertTool(ctx context.Context, arg UpsertToolParams) error {
 }
 
 const upsertToolServer = `-- name: UpsertToolServer :one
-INSERT INTO toolserver (name, group_kind, description, last_connected, created_at, updated_at)
-VALUES ($1, $2, $3, $4, NOW(), NOW())
+INSERT INTO toolserver (name, group_kind, description, last_connected, user_id, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
 ON CONFLICT (name, group_kind) DO UPDATE SET
     description    = EXCLUDED.description,
     last_connected = EXCLUDED.last_connected,
+    user_id        = COALESCE(EXCLUDED.user_id, toolserver.user_id),
     updated_at     = NOW(),
     deleted_at     = NULL
-RETURNING name, group_kind, created_at, updated_at, deleted_at, description, last_connected
+RETURNING name, group_kind, created_at, updated_at, deleted_at, description, last_connected, user_id
 `
 
 type UpsertToolServerParams struct {
@@ -231,6 +234,7 @@ type UpsertToolServerParams struct {
 	GroupKind     string
 	Description   *string
 	LastConnected *time.Time
+	UserID        *string
 }
 
 func (q *Queries) UpsertToolServer(ctx context.Context, arg UpsertToolServerParams) (Toolserver, error) {
@@ -239,6 +243,7 @@ func (q *Queries) UpsertToolServer(ctx context.Context, arg UpsertToolServerPara
 		arg.GroupKind,
 		arg.Description,
 		arg.LastConnected,
+		arg.UserID,
 	)
 	var i Toolserver
 	err := row.Scan(
@@ -249,6 +254,7 @@ func (q *Queries) UpsertToolServer(ctx context.Context, arg UpsertToolServerPara
 		&i.DeletedAt,
 		&i.Description,
 		&i.LastConnected,
+		&i.UserID,
 	)
 	return i, err
 }

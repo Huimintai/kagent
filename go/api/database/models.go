@@ -160,6 +160,7 @@ type ToolServer struct {
 	GroupKind     string     `json:"group_kind"`
 	Description   string     `json:"description"`
 	LastConnected *time.Time `json:"last_connected,omitempty"`
+	UserID        *string    `json:"user_id,omitempty"`
 }
 
 type LangGraphCheckpoint struct {

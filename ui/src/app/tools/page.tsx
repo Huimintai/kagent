@@ -222,7 +222,7 @@ export default function ToolsPage() {
       {toolsData.isLoading ? (
         <div className="flex flex-col items-center justify-center h-[200px] border rounded-lg bg-secondary/5">
           <div className="animate-pulse h-6 w-6 rounded-full bg-primary/10 mb-4"></div>
-          <p className="text-muted-foreground">Loading tools...</p>
+          <p className="text-muted-foreground">Loading tools ...</p>
         </div>
       ) : filteredTools.length > 0 ? (
         <ScrollArea className="h-[calc(100vh-300px)] pr-4 -mr-4">

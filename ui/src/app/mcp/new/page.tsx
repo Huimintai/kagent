@@ -44,7 +44,8 @@ function NewMcpServerContent() {
       }
       await refreshTools();
       toast.success("MCP server created");
-      router.push("/mcp");
+      const newName = r.data?.metadata?.name;
+      router.push(newName ? `/mcp?new=${encodeURIComponent(newName)}` : "/mcp");
     },
     [refreshTools, router],
   );
