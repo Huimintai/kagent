@@ -22,6 +22,15 @@ const BLOCKED_FORWARD_HEADERS = new Set([
 // oauth2-proxy and is required for the backend to identify the user.
 const DEFAULT_FORWARD_HEADERS = ["authorization"] as const;
 
+// Identity headers used by oauth2-proxy / ingress to convey user identity.
+// These are always forwarded and used to derive X-User-Id.
+const IDENTITY_HEADERS = [
+  "x-auth-request-user",
+  "x-auth-request-email",
+  "x-forwarded-email",
+  "x-forwarded-user",
+] as const;
+
 /**
  * Parse a comma-separated header allowlist (case-insensitive) and union it
  * with the default forward headers. Hop-by-hop / routing headers are dropped
@@ -33,7 +42,7 @@ export function parseAllowedForwardHeaders(raw: string | undefined): {
   allowed: Set<string>;
   blocked: string[];
 } {
-  const allowed = new Set<string>(DEFAULT_FORWARD_HEADERS);
+  const allowed = new Set<string>([...DEFAULT_FORWARD_HEADERS, ...IDENTITY_HEADERS]);
   const blocked: string[] = [];
   if (!raw) {
     return { allowed, blocked };
@@ -93,7 +102,22 @@ export function extractAllowedHeaders(
 }
 
 function extractAuthHeaders(getHeader: (name: string) => string | null): Record<string, string> {
-  return extractAllowedHeaders(getAllowedHeadersFromEnv(), getHeader);
+  const forwarded = extractAllowedHeaders(getAllowedHeadersFromEnv(), getHeader);
+
+  // Ensure X-User-Id is set so the controller can identify the user
+  // even when running in "unsecure" auth mode (no JWT parsing).
+  if (!forwarded["x-user-id"]) {
+    const userId =
+      getHeader("x-auth-request-email") ||
+      getHeader("x-forwarded-email") ||
+      getHeader("x-auth-request-user") ||
+      getHeader("x-forwarded-user");
+    if (userId) {
+      forwarded["x-user-id"] = userId;
+    }
+  }
+
+  return forwarded;
 }
 
 /**
