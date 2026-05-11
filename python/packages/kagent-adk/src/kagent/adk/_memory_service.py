@@ -294,6 +294,239 @@ class KagentMemoryService(BaseMemoryService):
 
         return "\n".join(parts)
 
+    def _normalize_l2(self, x):
+        x = np.array(x)
+        if x.ndim == 1:
+            norm = np.linalg.norm(x)
+            if norm == 0:
+                return x
+            return x / norm
+        else:
+            norm = np.linalg.norm(x, 2, axis=1, keepdims=True)
+            return np.where(norm == 0, x, x / norm)
+
+    async def _generate_embedding_async(
+        self, input_data: Union[str, List[str]]
+    ) -> Union[List[float], List[List[float]]]:
+        """Generate embedding vector(s) using provider-specific SDK clients.
+
+        Args:
+            input_data: Single string or list of strings to embed.
+
+        Returns:
+            Single vector (List[float]) if input is string,
+            or List of vectors (List[List[float]]) if input is list.
+            Returns empty list on failure.
+        """
+        if not self.embedding_config:
+            logger.warning("No embedding configuration found")
+            return []
+
+        model_name = self.embedding_config.model
+        provider = self.embedding_config.provider
+
+        if not model_name:
+            logger.warning("No embedding model specified in config")
+            return []
+
+        is_batch = isinstance(input_data, list)
+        texts = input_data if is_batch else [input_data]
+        api_base = self.embedding_config.base_url or None
+
+        try:
+            raw_embeddings = await self._call_embedding_provider(provider, model_name, texts, api_base)
+        except Exception as e:
+            logger.error("Error generating embedding with provider=%s model=%s: %s", provider, model_name, e)
+            return []
+
+        # Most Matryoshka Representation Learning embedding models produce embeddings that still have
+        # meaning when truncated to specific sizes: https://huggingface.co/blog/matryoshka
+        # We must ensure embeddings have consistent dimensions for the vector storage backend.
+        embeddings = []
+        for embedding in raw_embeddings:
+            dim = len(embedding)
+            if dim > 768:
+                embedding = embedding[:768]
+                embedding = self._normalize_l2(embedding).tolist()
+            elif dim < 768:
+                logger.error(
+                    "Embedding dimension %d is smaller than required 768; rejecting embeddings batch",
+                    dim,
+                )
+                return []
+            embeddings.append(embedding)
+
+        if is_batch:
+            return embeddings
+        return embeddings[0] if embeddings else []
+
+    async def _call_embedding_provider(
+        self,
+        provider: str,
+        model_name: str,
+        texts: List[str],
+        api_base: Optional[str],
+    ) -> List[List[float]]:
+        """Dispatch to the correct provider SDK for embedding generation."""
+        if provider in ("openai", "azure_openai"):
+            return await self._embed_openai(provider, model_name, texts, api_base)
+        if provider == "ollama":
+            return await self._embed_ollama(model_name, texts, api_base)
+        if provider in ("vertex_ai", "gemini"):
+            return await self._embed_google(provider, model_name, texts)
+        if provider == "bedrock":
+            return await self._embed_bedrock(model_name, texts)
+        if provider == "sap_ai_core":
+            auth_url = getattr(self.embedding_config, "auth_url", None) if self.embedding_config else None
+            return await self._embed_sap_ai_core(model_name, texts, api_base, auth_url)
+        # Unknown provider — try OpenAI-compatible as a fallback
+        logger.warning("Unknown embedding provider '%s'; attempting OpenAI-compatible call.", provider)
+        return await self._embed_openai("openai", model_name, texts, api_base)
+
+    async def _embed_openai(
+        self,
+        provider: str,
+        model_name: str,
+        texts: List[str],
+        api_base: Optional[str],
+    ) -> List[List[float]]:
+        """Embed using the OpenAI or Azure OpenAI SDK."""
+        import os
+
+        if provider == "azure_openai":
+            from openai import AsyncAzureOpenAI
+
+            api_version = os.environ.get("OPENAI_API_VERSION", "2024-02-15-preview")
+            azure_endpoint = api_base or os.environ.get("AZURE_OPENAI_ENDPOINT")
+            if not azure_endpoint:
+                raise ValueError("Azure OpenAI endpoint must be set via base_url or AZURE_OPENAI_ENDPOINT env var")
+            client = AsyncAzureOpenAI(api_version=api_version, azure_endpoint=azure_endpoint)
+        else:
+            from openai import AsyncOpenAI
+
+            client = AsyncOpenAI(base_url=api_base or None)
+
+        response = await client.embeddings.create(model=model_name, input=texts, dimensions=768)
+        return [item.embedding for item in response.data]
+
+    async def _embed_ollama(
+        self,
+        model_name: str,
+        texts: List[str],
+        api_base: Optional[str],
+    ) -> List[List[float]]:
+        """Embed using the Ollama SDK."""
+        import os
+
+        import ollama
+
+        host = api_base or os.environ.get("OLLAMA_API_BASE", "http://localhost:11434")
+        client = ollama.AsyncClient(host=host)
+        result = await client.embed(model=model_name, input=texts)
+        return list(result.embeddings)
+
+    async def _embed_sap_ai_core(
+        self,
+        model_name: str,
+        texts: List[str],
+        api_base: Optional[str],
+        auth_url: Optional[str],
+    ) -> List[List[float]]:
+        """Embed using SAP AI Core inference endpoint (OpenAI-compatible).
+
+        Resolves the embedding deployment URL by listing deployments filtered by
+        scenarioId=azure-openai (the SAP AI Core embedding scenario), then calls
+        the OpenAI-compatible embeddings endpoint.
+        """
+        import os
+
+        import httpx
+        from openai import AsyncOpenAI
+
+        client_id = os.environ.get("SAP_AI_CORE_CLIENT_ID", "")
+        client_secret = os.environ.get("SAP_AI_CORE_CLIENT_SECRET", "")
+
+        if not client_id or not client_secret:
+            raise ValueError("SAP AI Core requires SAP_AI_CORE_CLIENT_ID and SAP_AI_CORE_CLIENT_SECRET env vars")
+
+        if not api_base:
+            raise ValueError("SAP AI Core embedding requires base_url")
+
+        from kagent.adk.models._sap_ai_core import _get_oauth_token_sync
+
+        resolved_auth_url = auth_url or os.environ.get("SAP_AI_CORE_AUTH_URL", "")
+        if not resolved_auth_url:
+            raise ValueError("SAP AI Core embedding requires auth_url or SAP_AI_CORE_AUTH_URL env var")
+
+        token, _expires_at = await asyncio.to_thread(
+            _get_oauth_token_sync, resolved_auth_url, client_id, client_secret
+        )
+
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "AI-Resource-Group": "default",
+        }
+
+        # List deployments to find the azure-openai embedding deployment URL
+        base = api_base.rstrip("/")
+        async with httpx.AsyncClient(timeout=30) as http:
+            resp = await http.get(f"{base}/v2/lm/deployments", headers=headers)
+            resp.raise_for_status()
+            deployments = resp.json()
+
+        deployment_url = None
+        for dep in deployments.get("resources", []):
+            if dep.get("status") != "RUNNING":
+                continue
+            url = dep.get("deploymentUrl", "")
+            if not url:
+                continue
+            # Match by model name in details.resources.backendDetails.model.name
+            backend_model = (
+                dep.get("details", {})
+                .get("resources", {})
+                .get("backendDetails", {})
+                .get("model", {})
+                .get("name", "")
+            )
+            if backend_model == model_name:
+                deployment_url = url
+                break
+
+        if not deployment_url:
+            raise ValueError(f"No running deployment found in SAP AI Core for embedding model '{model_name}'")
+
+        client = AsyncOpenAI(
+            api_key=token,
+            base_url=deployment_url.rstrip("/") + "/v1",
+            default_headers={"AI-Resource-Group": "default"},
+        )
+        response = await client.embeddings.create(model=model_name, input=texts)
+        return [item.embedding for item in response.data]
+
+    async def _embed_google(
+        self,
+        provider: str,
+        model_name: str,
+        texts: List[str],
+    ) -> List[List[float]]:
+        """Embed using google-genai (Gemini or Vertex AI)."""
+        from google import genai
+        from google.genai import types as genai_types
+
+        if provider == "vertex_ai":
+            client = genai.Client(vertexai=True)
+        else:
+            client = genai.Client()
+
+        response = await asyncio.to_thread(
+            client.models.embed_content,
+            model=model_name,
+            contents=texts,
+            config=genai_types.EmbedContentConfig(output_dimensionality=768),
+        )
+        return [list(emb.values) for emb in response.embeddings]
+
     async def _summarize_session_content_async(
         self,
         content: str,
