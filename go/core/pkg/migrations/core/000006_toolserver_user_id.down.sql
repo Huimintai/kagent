@@ -1,0 +1,1 @@
+ALTER TABLE toolserver DROP COLUMN IF EXISTS user_id;

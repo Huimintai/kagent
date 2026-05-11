@@ -339,4 +339,41 @@ func TestProxyAuthenticator_UpstreamAuth(t *testing.T) {
 	if got := req.Header.Get("Authorization"); got != authHeader {
 		t.Errorf("Authorization header = %q, want %q", got, authHeader)
 	}
+
+	// Verify X-User-Id was forwarded
+	if got := req.Header.Get("X-User-Id"); got != "user123" {
+		t.Errorf("X-User-Id header = %q, want %q", got, "user123")
+	}
+}
+
+func TestProxyAuthenticator_MCPTokenForwarding(t *testing.T) {
+	auth := authimpl.NewProxyAuthenticator("")
+
+	claims := map[string]any{
+		"sub": "user456",
+	}
+	token := createTestJWT(claims)
+
+	headers := http.Header{}
+	headers.Set("Authorization", "Bearer "+token)
+	headers.Set("X-MCP-Token-github", "ghp_abc123")
+	headers.Set("X-MCP-Token-ado", "ado_xyz789")
+
+	session, err := auth.Authenticate(context.Background(), headers, url.Values{})
+	if err != nil {
+		t.Fatalf("failed to authenticate: %v", err)
+	}
+
+	req, _ := http.NewRequest("POST", "http://agent-pod/a2a", nil)
+	if err := auth.UpstreamAuth(req, session, session.Principal()); err != nil {
+		t.Fatalf("UpstreamAuth returned error: %v", err)
+	}
+
+	// Verify MCP token headers were forwarded
+	if got := req.Header.Get("X-MCP-Token-github"); got != "ghp_abc123" {
+		t.Errorf("X-MCP-Token-github = %q, want %q", got, "ghp_abc123")
+	}
+	if got := req.Header.Get("X-MCP-Token-ado"); got != "ado_xyz789" {
+		t.Errorf("X-MCP-Token-ado = %q, want %q", got, "ado_xyz789")
+	}
 }
