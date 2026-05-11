@@ -66,4 +66,11 @@ var (
 		"Well-known endpoint for the Security Token Service (STS) used for token exchange.",
 		ComponentAgentRuntime,
 	)
+
+	KagentDefaultOCIAuthSecret = RegisterStringVar(
+		"KAGENT_DEFAULT_OCI_AUTH_SECRET",
+		"",
+		"Default Kubernetes secret name (type kubernetes.io/dockerconfigjson) used for OCI registry authentication when an agent does not specify ociAuthSecretRef.",
+		ComponentController,
+	)
 )
