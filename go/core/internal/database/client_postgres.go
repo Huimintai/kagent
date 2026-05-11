@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	dbpkg "github.com/kagent-dev/kagent/go/api/database"
 	"github.com/kagent-dev/kagent/go/api/v1alpha2"
@@ -984,9 +985,23 @@ func toAgentComment(r dbgen.AgentComment) *dbpkg.AgentComment {
 		AgentID:   r.AgentID,
 		UserID:    r.UserID,
 		Content:   r.Content,
-		CreatedAt: derefTime(r.CreatedAt),
-		DeletedAt: r.DeletedAt,
+		CreatedAt: timestamptzToTime(r.CreatedAt),
+		DeletedAt: timestamptzToPtr(r.DeletedAt),
 	}
+}
+
+func timestamptzToTime(t pgtype.Timestamptz) time.Time {
+	if t.Valid {
+		return t.Time
+	}
+	return time.Time{}
+}
+
+func timestamptzToPtr(t pgtype.Timestamptz) *time.Time {
+	if t.Valid {
+		return &t.Time
+	}
+	return nil
 }
 
 // ── Pointer helpers ───────────────────────────────────────────────────────────
