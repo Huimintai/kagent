@@ -13,7 +13,7 @@ import type {
   AgentType,
   EnvVar,
   ContextConfig,
-  GitRepo,
+  InlineSkill,
   DeclarativeRuntime,
 } from "@/types";
 import { getModelConfigs } from "@/app/actions/modelConfigs";
@@ -22,6 +22,8 @@ import type { AgentFormValidationErrors } from "@/components/agent-form/agent-fo
 import type { OpenClawSandboxFormSlice } from "@/lib/openClawSandboxForm";
 import { validateOpenClawSandboxForm } from "@/lib/openClawSandboxForm";
 import { isResourceNameValid } from "@/lib/utils";
+import { useAppConfig } from "@/lib/configStore";
+import type { GitSkillFormRow } from "@/lib/agentSkillsForm";
 
 export type ValidationErrors = AgentFormValidationErrors;
 
@@ -29,9 +31,12 @@ export interface AgentFormData {
   name: string;
   namespace: string;
   description: string;
+  privateMode?: boolean;
   type?: AgentType;
-  /** Python vs Go ADK for declarative / sandbox (non-BYO) workloads. */
-  declarativeRuntime?: DeclarativeRuntime;
+  // Category label
+  category?: string;
+  // Classification labels
+  toolType?: string;
   // Declarative fields
   systemPrompt?: string;
   modelName?: string;
@@ -39,8 +44,8 @@ export interface AgentFormData {
   stream?: boolean;
   // Skills (OCI container refs and/or Git repositories; at least one list may be set)
   skillRefs?: string[];
-  skillGitRepos?: GitRepo[];
-  skillsGitAuthSecretName?: string;
+  // Inline skills (prompt-only, no container)
+  inlineSkills?: InlineSkill[];
   // Memory
   memory?: {
     modelConfig?: string;
@@ -65,6 +70,11 @@ export interface AgentFormData {
   env?: EnvVar[];
   imagePullPolicy?: string;
   serviceAccountName?: string;
+  // Skills Git repos and auth
+  skillGitRepos?: GitSkillFormRow[];
+  skillsGitAuthSecretName?: string;
+  // Declarative runtime (python vs go ADK)
+  declarativeRuntime?: DeclarativeRuntime;
 }
 
 export interface AgentsContextType {
@@ -102,6 +112,7 @@ export function AgentsProvider({ children }: AgentsProviderProps) {
   const [loading, setLoading] = useState(true);
   const [tools, setTools] = useState<ToolsResponse[]>([]);
   const [models, setModels] = useState<ModelConfig[]>([]);
+  const { allowedNamespace } = useAppConfig();
 
   const fetchAgents = useCallback(async () => {
     try {
@@ -112,14 +123,20 @@ export function AgentsProvider({ children }: AgentsProviderProps) {
         throw new Error(agentsResult.error || "Failed to fetch agents");
       }
 
-      setAgents(agentsResult.data);
+      let agentData = agentsResult.data;
+      if (allowedNamespace) {
+        agentData = agentData.filter(
+          (a) => a.agent.metadata.namespace === allowedNamespace
+        );
+      }
+      setAgents(agentData);
       setError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "An unexpected error occurred");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [allowedNamespace]);
 
   const fetchModels = useCallback(async () => {
     try {

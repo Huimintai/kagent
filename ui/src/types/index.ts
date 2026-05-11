@@ -100,7 +100,7 @@ export interface ModelConfigSpec {
   geminiVertexAI?: GeminiVertexAIConfig;
   anthropicVertexAI?: AnthropicVertexAIConfig;
   bedrock?: BedrockConfig;
-  sapAICore?: SAPAICoreConfigPayload;
+  sapAICore?: SAPAICoreConfig;
 }
 
 export interface ModelConfig {
@@ -154,6 +154,12 @@ export interface ConfiguredModelProvider {
 export interface ConfiguredModelProviderModelsResponse {
   provider: string;
   models: string[];
+}
+
+export interface SAPAICoreConfig {
+  baseUrl: string;
+  resourceGroup?: string;
+  authUrl?: string;
 }
 
 export interface SecretMaterial {
@@ -217,6 +223,7 @@ export interface Session {
   created_at: string;
   updated_at: string;
   deleted_at: string;
+  pinned?: boolean;
 }
 
 export interface ToolsResponse {
@@ -233,9 +240,10 @@ export interface ToolsResponse {
 export interface ResourceMetadata {
   name: string;
   namespace?: string;
+  annotations?: Record<string, string>;
+  labels?: Record<string, string>;
   /** ISO/RFC3339 from Kubernetes `metadata.creationTimestamp` */
   creationTimestamp?: string;
-  resourceVersion?: string;
 }
 
 export type ToolProviderType = "McpServer" | "Agent"
@@ -256,6 +264,8 @@ export interface TypedLocalReference {
 export interface McpServerTool extends TypedLocalReference {
   toolNames: string[];
   requireApproval?: string[];
+  allowedHeaders?: string[];
+  sessionTokenLabel?: string;
 }
 
 export type AgentType = "Declarative" | "BYO" | "Sandbox" | "OpenClawSandbox";
@@ -281,6 +291,12 @@ export interface SandboxAgent {
   kind?: string;
   metadata: ResourceMetadata;
   spec: AgentSpec;
+}
+
+export interface InlineSkill {
+  name: string;
+  description: string;
+  content: string;
 }
 
 export interface AgentSpec {
@@ -314,12 +330,14 @@ export interface PromptTemplateSummary {
   keyCount: number;
   /** Fragment keys per library (for @ include picker). */
   keys?: string[];
+  userId?: string;
 }
 
 export interface PromptTemplateDetail {
   namespace: string;
   name: string;
   data: Record<string, string>;
+  userId?: string;
 }
 
 /** Which ADK implementation runs the agent (Kubernetes `spec.declarative.runtime`). */
@@ -340,6 +358,8 @@ export interface DeclarativeAgentSpec {
   memory?: MemorySpec;
   /** When set, systemMessage is rendered as a Go text/template with includes and variables. */
   promptTemplate?: PromptTemplateSpec;
+  /** Inline prompt-based skills (no container required). */
+  inlineSkills?: InlineSkill[];
 }
 
 export interface ContextConfig {
@@ -431,6 +451,8 @@ export interface OpenshellAgentHarnessListEntry {
 export interface AgentResponse {
   id: number | string;
   agent: Agent;
+  user_id?: string;
+  private_mode?: boolean;
   model: string;
   modelProvider: string;
   modelConfigRef: string;
@@ -490,6 +512,7 @@ export interface RemoteMCPServerResponse {
   ref: string; // namespace/name
   groupKind: string;
   discoveredTools: DiscoveredTool[];
+  userId?: string;
 }
 
 // MCPServer types for stdio-based servers
@@ -526,6 +549,7 @@ export interface MCPServerResponse {
   ref: string; // namespace/name
   groupKind: string;
   discoveredTools: DiscoveredTool[];
+  userId?: string;
 }
 
 // Union type for tool server responses
@@ -624,4 +648,96 @@ export interface AdkRequestConfirmationData {
   name: string;
   id: string;
   args: HitlRequestConfirmationArgs;
+}
+
+// ---------------------------------------------------------------------------
+// ScheduledRun types
+// ---------------------------------------------------------------------------
+
+// Dashboard types
+export interface AgentStat {
+  agentId: string;
+  userCount: number;
+  sessionCount: number;
+  messageCount: number;
+  score: number;
+  lastActiveAt?: string;
+}
+
+export interface ToolServerStat {
+  name: string;
+  groupKind: string;
+  agentCount: number;
+  lastConnected?: string;
+}
+
+export interface PlatformSummary {
+  totalAgents: number;
+  totalSessions: number;
+  totalToolServers: number;
+  sessionsToday: number;
+}
+
+export interface StatsResponse {
+  summary: PlatformSummary;
+  topAgents: AgentStat[];
+  topMCPs: ToolServerStat[];
+}
+
+// Agent Comments
+export interface AgentComment {
+  id: string;
+  agentId: string;
+  userId: string;
+  content: string;
+  createdAt: string;
+}
+
+export type ConcurrencyPolicy = "Forbid" | "Allow" | "Replace";
+export type RunStatusType = "Succeeded" | "Failed" | "Running";
+
+export interface ScheduledRunAgentRef {
+  name: string;
+  namespace?: string;
+}
+
+export interface ScheduledRunSpec {
+  schedule: string;
+  agentRef: ScheduledRunAgentRef;
+  prompt: string;
+  suspend?: boolean;
+  concurrencyPolicy?: ConcurrencyPolicy;
+  maxRunHistory?: number;
+}
+
+export interface RunHistoryEntry {
+  startTime: string;
+  completionTime?: string;
+  status: RunStatusType;
+  sessionId?: string;
+  message?: string;
+}
+
+export interface ScheduledRunCondition {
+  type: string;
+  status: string;
+  reason?: string;
+  message?: string;
+}
+
+export interface ScheduledRunStatus {
+  lastRunTime?: string;
+  nextRunTime?: string;
+  active: number;
+  runHistory?: RunHistoryEntry[];
+  conditions?: ScheduledRunCondition[];
+  observedGeneration?: number;
+}
+
+export interface ScheduledRun {
+  apiVersion?: string;
+  kind?: string;
+  metadata: ResourceMetadata;
+  spec: ScheduledRunSpec;
+  status?: ScheduledRunStatus;
 }

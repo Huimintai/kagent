@@ -1,126 +1,243 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+
+import { useMemo, useState } from "react";
 import { AgentGrid } from "@/components/AgentGrid";
-import { AgentListView } from "@/components/AgentListView";
-import { Plus, LayoutGrid, List } from "lucide-react";
+import { AgentFilterToolbar } from "@/components/AgentFilterToolbar";
+import { Plus, ChevronDown, ChevronRight } from "lucide-react";
 import KagentLogo from "@/components/kagent-logo";
 import Link from "next/link";
 import { ErrorState } from "./ErrorState";
 import { Button } from "./ui/button";
+import { Badge } from "./ui/badge";
 import { LoadingState } from "./LoadingState";
 import { useAgents } from "./AgentsProvider";
-import { AppPageFrame } from "@/components/layout/AppPageFrame";
-import { PageHeader } from "@/components/layout/PageHeader";
-import { cn } from "@/lib/utils";
+import type { AgentResponse } from "@/types";
+import { k8sRefUtils } from "@/lib/k8sUtils";
+import { useUserStore } from "@/lib/userStore";
+import { LABEL_CATEGORY, LABEL_HAS_MCP, LABEL_HAS_SKILL } from "@/lib/constants";
+import type { PrivacyFilter } from "@/lib/constants";
 
-const AGENTS_VIEW_KEY = "kagent-agents-view";
-type AgentsView = "grid" | "list";
+const UNCATEGORIZED = "Uncategorized";
 
-function readStoredView(): AgentsView {
-  if (typeof window === "undefined") {
-    return "grid";
-  }
-  const v = window.localStorage.getItem(AGENTS_VIEW_KEY);
-  return v === "list" ? "list" : "grid";
+function getAgentCategory(agent: AgentResponse): string {
+  return agent.agent.metadata.labels?.[LABEL_CATEGORY] || UNCATEGORIZED;
+}
+
+function toggleSetItem(prev: Set<string>, value: string): Set<string> {
+  const next = new Set(prev);
+  if (next.has(value)) next.delete(value);
+  else next.add(value);
+  return next;
 }
 
 export default function AgentList() {
-  const { agents , loading, error } = useAgents();
-  const [view, setView] = useState<AgentsView>("grid");
+  const { agents, loading, error } = useAgents();
+  const currentUserId = useUserStore((state) => state.userId);
 
-  useEffect(() => {
-    const id = requestAnimationFrame(() => {
-      setView(readStoredView());
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
+  const [selectedToolTypes, setSelectedToolTypes] = useState<Set<string>>(new Set());
+  const [privacyFilter, setPrivacyFilter] = useState<PrivacyFilter>("all");
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
+
+  // Extract unique values per dimension
+  const allCategories = useMemo(() => {
+    const s = new Set<string>();
+    agents?.forEach((a) => s.add(getAgentCategory(a)));
+    return s;
+  }, [agents]);
+
+  const allToolTypes = useMemo(() => {
+    const s = new Set<string>();
+    agents?.forEach((a) => {
+      if (a.agent.metadata.labels?.[LABEL_HAS_MCP] === "true") s.add("mcp");
+      if (a.agent.metadata.labels?.[LABEL_HAS_SKILL] === "true") s.add("skill");
     });
-    return () => cancelAnimationFrame(id);
-  }, []);
+    return s;
+  }, [agents]);
 
-  const setViewAndPersist = useCallback((next: AgentsView) => {
-    setView(next);
-    try {
-      window.localStorage.setItem(AGENTS_VIEW_KEY, next);
-    } catch {
-      // ignore private mode / quota
-    }
-  }, []);
+  // Initialize expanded state for new categories
+  useMemo(() => {
+    setExpandedCategories((prev) => {
+      const next = { ...prev };
+      allCategories.forEach((cat) => {
+        if (!(cat in next)) next[cat] = true;
+      });
+      return next;
+    });
+  }, [allCategories]);
 
-  if (error) {
-    return <ErrorState message={error} />;
-  }
+  // Multi-dimensional filtering
+  const filteredAgents = useMemo(() => {
+    if (!agents) return [];
+    return agents.filter((a) => {
+      // Text search
+      const search = searchTerm.toLowerCase();
+      const ref = k8sRefUtils.toRef(a.agent.metadata.namespace || "", a.agent.metadata.name || "");
+      const matchesSearch =
+        !search ||
+        ref.toLowerCase().includes(search) ||
+        a.agent.metadata.name.toLowerCase().includes(search) ||
+        a.agent.spec.description?.toLowerCase().includes(search);
 
-  if (loading) {
-    return <LoadingState />;
-  }
+      // Category
+      const category = getAgentCategory(a);
+      const matchesCategory = selectedCategories.size === 0 || selectedCategories.has(category);
+
+      // Tool type
+      const agentToolTypes = new Set<string>();
+      if (a.agent.metadata.labels?.[LABEL_HAS_MCP] === "true") agentToolTypes.add("mcp");
+      if (a.agent.metadata.labels?.[LABEL_HAS_SKILL] === "true") agentToolTypes.add("skill");
+      const matchesToolType = selectedToolTypes.size === 0 || [...selectedToolTypes].some((t) => agentToolTypes.has(t));
+
+      // Privacy
+      const ownerId = a.user_id || a.agent.metadata.annotations?.["kagent.dev/user-id"] || "";
+      const isOwner = ownerId === currentUserId;
+      const isPrivate =
+        typeof a.private_mode === "boolean"
+          ? a.private_mode
+          : a.agent.metadata.annotations?.["kagent.dev/private-mode"] !== "false";
+
+      let matchesPrivacy = true;
+      if (privacyFilter === "my") {
+        matchesPrivacy = isOwner;
+      }
+
+      return matchesSearch && matchesCategory && matchesToolType && matchesPrivacy;
+    });
+  }, [agents, searchTerm, selectedCategories, selectedToolTypes, privacyFilter, currentUserId]);
+
+  // Group filtered agents by category
+  const groupedAgents = useMemo(() => {
+    const groups: Record<string, AgentResponse[]> = {};
+    filteredAgents.forEach((a) => {
+      const cat = getAgentCategory(a);
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(a);
+    });
+    return Object.entries(groups).sort(([a], [b]) => {
+      if (a === UNCATEGORIZED) return 1;
+      if (b === UNCATEGORIZED) return -1;
+      return a.localeCompare(b);
+    });
+  }, [filteredAgents]);
+
+  const toggleCategoryExpand = (cat: string) => {
+    setExpandedCategories((prev) => ({ ...prev, [cat]: !prev[cat] }));
+  };
+
+  const hasActiveFilters =
+    searchTerm !== "" ||
+    selectedCategories.size > 0 ||
+    selectedToolTypes.size > 0 ||
+    privacyFilter !== "all";
+
+  const handleClearAllFilters = () => {
+    setSearchTerm("");
+    setSelectedCategories(new Set());
+    setSelectedToolTypes(new Set());
+    setPrivacyFilter("all");
+  };
+
+  if (error) return <ErrorState message={error} />;
+  if (loading) return <LoadingState />;
+
+  const hasMultipleCategories = allCategories.size > 1;
 
   return (
-    <AppPageFrame ariaLabelledBy="agents-page-title" mainClassName="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-      <PageHeader
-        titleId="agents-page-title"
-        title="Agents"
-        className="mb-8"
-        end={
-          agents && agents.length > 0 ? (
-            <div
-              className="flex w-full min-w-0 items-center justify-end gap-1 rounded-lg border border-border/60 bg-muted/20 p-1"
-              role="group"
-              aria-label="Layout"
-            >
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className={cn(
-                  "h-8 gap-1.5 px-2.5 text-muted-foreground",
-                  view === "grid" && "bg-card text-foreground shadow-sm",
-                )}
-                aria-pressed={view === "grid"}
-                aria-label="Show agents as cards"
-                onClick={() => setViewAndPersist("grid")}
-              >
-                <LayoutGrid className="h-4 w-4 shrink-0" aria-hidden />
-                <span className="hidden sm:inline" aria-hidden>
-                  Cards
-                </span>
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className={cn(
-                  "h-8 gap-1.5 px-2.5 text-muted-foreground",
-                  view === "list" && "bg-card text-foreground shadow-sm",
-                )}
-                aria-pressed={view === "list"}
-                aria-label="Show agents as a list"
-                onClick={() => setViewAndPersist("list")}
-              >
-                <List className="h-4 w-4 shrink-0" aria-hidden />
-                <span className="hidden sm:inline" aria-hidden>
-                  List
-                </span>
-              </Button>
-            </div>
-          ) : null
-        }
-      />
+    <div className="mt-8 mx-auto max-w-6xl px-6">
+      <div className="flex justify-between items-center mb-8">
+        <div className="flex items-center gap-4">
+          <h1 className="text-2xl font-bold">Agents</h1>
+          {agents && agents.length > 0 && (
+            <Badge variant="secondary" className="font-mono text-xs">
+              {filteredAgents.length}/{agents.length}
+            </Badge>
+          )}
+        </div>
+      </div>
 
       {agents?.length === 0 ? (
-        <div className="rounded-xl border border-border/60 bg-card/30 py-12 text-center shadow-sm">
-          <KagentLogo className="mx-auto mb-4 h-16 w-16" />
-          <h2 className="mb-2 text-lg font-medium tracking-tight">No agents yet</h2>
-          <p className="mb-6 text-pretty text-sm text-muted-foreground">Create an agent to run it in your cluster and wire models and tools in one place.</p>
-          <Button asChild size="lg" className="min-w-[12rem]">
+        <div className="text-center py-12">
+          <KagentLogo className="h-16 w-16 mx-auto mb-4" />
+          <h3 className="text-lg font-medium mb-2">No agents yet</h3>
+          <p className="mb-6">Create your first agent to get started</p>
+          <Button className="bg-violet-500 hover:bg-violet-600" asChild>
             <Link href="/agents/new">
-              <Plus className="mr-2 h-4 w-4" aria-hidden />
-              New Agent
+              <Plus className="h-4 w-4 mr-2" />
+              Create New Agent
             </Link>
           </Button>
         </div>
-      ) : view === "list" ? (
-        <AgentListView agentResponse={agents || []} />
       ) : (
-        <AgentGrid agentResponse={agents || []} />
+        <>
+          <AgentFilterToolbar
+            searchTerm={searchTerm}
+            onSearchChange={setSearchTerm}
+            privacyFilter={privacyFilter}
+            onPrivacyFilterChange={setPrivacyFilter}
+            filterSections={[
+              {
+                label: "Tool Type",
+                values: allToolTypes,
+                selected: selectedToolTypes,
+                onToggle: (v) => setSelectedToolTypes((p) => toggleSetItem(p, v)),
+              },
+              {
+                label: "Category",
+                values: allCategories,
+                selected: selectedCategories,
+                onToggle: (v) => setSelectedCategories((p) => toggleSetItem(p, v)),
+              },
+            ]}
+            onClearAllFilters={handleClearAllFilters}
+            hasActiveFilters={hasActiveFilters}
+          />
+
+          {/* Grouped display */}
+          {filteredAgents.length === 0 ? (
+            <div className="text-center py-12">
+              <h3 className="text-lg font-medium mb-2">No agents found</h3>
+              <p className="text-muted-foreground mb-4">Try adjusting your search or filters.</p>
+              {hasActiveFilters && (
+                <Button variant="outline" onClick={handleClearAllFilters}>
+                  Clear Filters
+                </Button>
+              )}
+            </div>
+          ) : hasMultipleCategories ? (
+            <div className="space-y-4">
+              {groupedAgents.map(([category, categoryAgents]) => (
+                <div key={category} className="border rounded-lg overflow-hidden bg-card shadow-sm">
+                  <div
+                    className="flex items-center justify-between p-4 bg-secondary/50 cursor-pointer hover:bg-secondary/70 transition-colors"
+                    onClick={() => toggleCategoryExpand(category)}
+                  >
+                    <div className="flex items-center gap-2">
+                      {expandedCategories[category] ? (
+                        <ChevronDown className="w-4 h-4" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4" />
+                      )}
+                      <h3 className="font-semibold capitalize text-sm">{category}</h3>
+                      <Badge variant="secondary" className="font-mono text-xs">
+                        {categoryAgents.length}
+                      </Badge>
+                    </div>
+                  </div>
+                  {expandedCategories[category] && (
+                    <div className="p-4 border-t">
+                      <AgentGrid agentResponse={categoryAgents} />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <AgentGrid agentResponse={filteredAgents} />
+          )}
+        </>
       )}
-    </AppPageFrame>
+    </div>
   );
 }

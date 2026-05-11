@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getBackendUrl } from '@/lib/utils';
-import { getAuthHeadersFromRequest, CORS_ALLOW_HEADERS } from '@/lib/auth';
+import { getAuthHeadersFromRequest } from '@/lib/auth';
 
 export async function POST(
   request: NextRequest,
@@ -12,27 +12,63 @@ export async function POST(
     const a2aRequest = await request.json();
 
     const backendUrl = getBackendUrl();
-    const targetUrl = `${backendUrl}/a2a/${namespace}/${agentName}/`;
+    let targetUrl = `${backendUrl}/a2a/${namespace}/${agentName}/`;
 
     // Get auth headers from incoming request
     const authHeaders = getAuthHeadersFromRequest(request);
 
+    // Propagate per-instance GitHub tokens as X-MCP-Token-<instanceId> headers.
+    // The instance ID directly becomes the MCP token label in the Python runtime,
+    // so it must match the sessionTokenLabel configured on the McpServerTool CRD.
+    // For disconnected instances, send an empty header so the runtime clears the session state.
+    const githubHeaders: Record<string, string> = {};
+    for (const cookie of request.cookies.getAll()) {
+      const match = cookie.name.match(/^kagent_github_connected_(.+)$/);
+      if (match) {
+        const instanceId = match[1];
+        const token = request.cookies.get(`kagent_github_token_${instanceId}`)?.value;
+        githubHeaders[`X-MCP-Token-${instanceId}`] = token || '';
+      }
+    }
+    // Also pick up token cookies without a corresponding connected cookie (belt + suspenders)
+    for (const cookie of request.cookies.getAll()) {
+      const match = cookie.name.match(/^kagent_github_token_(.+)$/);
+      if (match && cookie.value) {
+        const instanceId = match[1];
+        const headerKey = `X-MCP-Token-${instanceId}`;
+        if (!githubHeaders[headerKey]) {
+          githubHeaders[headerKey] = cookie.value;
+        }
+      }
+    }
+
+    // Propagate user identity for session isolation
+    const userIdHeader = request.headers.get('x-auth-request-user') ||
+                         request.headers.get('x-user-id') ||
+                         request.headers.get('x-auth-request-email') ||
+                         request.headers.get('x-forwarded-email') ||
+                         request.headers.get('x-forwarded-user');
+    if (userIdHeader) {
+      targetUrl += `?user_id=${encodeURIComponent(userIdHeader)}`;
+    }
+
     const backendResponse = await fetch(targetUrl, {
       method: 'POST',
       headers: {
-        ...authHeaders,
         'Content-Type': 'application/json',
         'Accept': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
         'User-Agent': 'kagent-ui',
+        ...authHeaders,
+        ...githubHeaders,
       },
       body: JSON.stringify(a2aRequest),
     });
 
     if (!backendResponse.ok) {
       const errorText = await backendResponse.text();
-      return new Response(errorText || 'Backend request failed', { 
+      return new Response(errorText || 'Backend request failed', {
         status: backendResponse.status,
         headers: {
           'Content-Type': 'text/plain',
@@ -51,7 +87,7 @@ export async function POST(
       'Connection': 'keep-alive',
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': CORS_ALLOW_HEADERS,
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, Accept',
     });
 
     const KEEP_ALIVE_INTERVAL_MS = 30000; // 30 seconds
@@ -111,7 +147,7 @@ export async function POST(
           }).catch(error => {
             console.error('A2A Proxy: Error in stream pump:', error);
             if (keepAliveTimer) clearTimeout(keepAliveTimer);
-            
+
             if (!isClosed) {
               controller.error(error);
               isClosed = true;
@@ -142,7 +178,7 @@ export async function OPTIONS() {
     headers: {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': CORS_ALLOW_HEADERS,
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, Accept',
       'Access-Control-Max-Age': '86400',
     },
   });

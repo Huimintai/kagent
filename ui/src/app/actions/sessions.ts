@@ -136,3 +136,16 @@ export async function checkSessionExists(sessionId: string): Promise<BaseRespons
     return createErrorResponse<boolean>(error, "Error checking session");
   }
 }
+
+/**
+ * Updates the pinned state of a session
+ * @param sessionId The session ID
+ * @param data Object with pinned boolean
+ * @returns A promise with the updated session
+ */
+export async function patchSession(sessionId: string, data: { pinned: boolean }): Promise<BaseResponse<Session>> {
+  return fetchApi<BaseResponse<Session>>(`/sessions/${sessionId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}

@@ -1,7 +1,31 @@
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import GroupedChats from "./GroupedChats";
 import { SidebarProvider, Sidebar, SidebarContent } from "@/components/ui/sidebar";
-import type { Session } from "@/types";
+import type { AgentResponse, Session } from "@/types";
+
+const mockAgent: AgentResponse = {
+  id: 1,
+  agent: {
+    metadata: { name: "k8s", namespace: "kagent" },
+    spec: {
+      type: "Declarative",
+      description: "A test agent",
+      declarative: {
+        systemMessage: "You are a helpful assistant.",
+        tools: [],
+        modelConfig: "default-model-config",
+      },
+    },
+  },
+  user_id: "user-1",
+  private_mode: false,
+  model: "gpt-4",
+  modelProvider: "openai",
+  modelConfigRef: "default-model-config",
+  tools: [],
+  deploymentReady: true,
+  accepted: true,
+};
 
 const meta: Meta<typeof GroupedChats> = {
   title: "Sidebars/GroupedChats",
@@ -52,6 +76,8 @@ export const WithSessionsAcrossTimeframes: Story = {
       olderSession,
       createSession("session-older-2", "Old conversation", 10),
     ],
+    currentAgent: mockAgent,
+    currentUserId: "user-1",
   },
 };
 
@@ -60,6 +86,8 @@ export const EmptySessions: Story = {
     agentName: "k8s",
     agentNamespace: "kagent",
     sessions: [],
+    currentAgent: mockAgent,
+    currentUserId: "user-1",
   },
 };
 
@@ -79,6 +107,8 @@ export const ManySessions: Story = {
       createSession("session-9", "Older chat 3", 7),
       createSession("session-10", "Older chat 4", 14),
     ],
+    currentAgent: mockAgent,
+    currentUserId: "user-1",
   },
 };
 

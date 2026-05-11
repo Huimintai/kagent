@@ -191,7 +191,7 @@ export default function ChatInterface({ selectedAgentName, selectedNamespace, se
       stopListening();
     }
 
-    const userMessageText = currentInputMessage;
+    const userMessageText = currentInputMessage.trim();
     setCurrentInputMessage("");
     setChatStatus("thinking");
     setStoredMessages(prev => [...prev, ...streamingMessages]);
@@ -628,7 +628,7 @@ export default function ChatInterface({ selectedAgentName, selectedNamespace, se
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       if (currentInputMessage.trim() && selectedAgentName && selectedNamespace && chatStatus === "ready") {
         handleSendMessage(e);
