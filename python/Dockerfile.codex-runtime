@@ -1,0 +1,42 @@
+### Codex CLI Runtime Image
+FROM ghcr.io/astral-sh/uv:python3.13-trixie-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y build-essential curl && rm -rf /var/lib/apt/lists/*
+
+# Install Codex CLI binary (multi-arch)
+RUN ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "amd64" ]; then CODEX_ARCH="x86_64-unknown-linux-musl"; \
+    elif [ "$ARCH" = "arm64" ]; then CODEX_ARCH="aarch64-unknown-linux-musl"; \
+    else echo "Unsupported: $ARCH" && exit 1; fi && \
+    curl -fsSL "https://github.com/openai/codex/releases/latest/download/codex-${CODEX_ARCH}.tar.gz" \
+        -o /tmp/codex.tar.gz && \
+    tar -xzf /tmp/codex.tar.gz -C /tmp/ && \
+    mv /tmp/codex-${CODEX_ARCH} /usr/local/bin/codex && \
+    chmod +x /usr/local/bin/codex && rm /tmp/codex.tar.gz
+
+# Copy workspace files
+COPY pyproject.toml .python-version uv.lock README.md ./
+COPY packages/kagent-sota-adapter packages/kagent-sota-adapter
+COPY packages/kagent-core packages/kagent-core
+COPY packages/kagent-adk packages/kagent-adk
+COPY packages/kagent-skills packages/kagent-skills
+COPY packages/agentsts-adk packages/agentsts-adk
+COPY packages/agentsts-core packages/agentsts-core
+
+# Install Python dependencies
+RUN uv venv && uv sync --no-dev --package kagent-sota-adapter
+
+ENV VIRTUAL_ENV=/app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
+ENV PORT=8080
+ENV CLI_RUNTIME=codex
+ENV CODEX_UNSAFE_ALLOW_NO_SANDBOX=1
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+CMD ["python", "-m", "kagent.sota_adapter"]
