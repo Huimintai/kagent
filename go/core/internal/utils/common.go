@@ -12,6 +12,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+const (
+	AgentUserIDAnnotation      = "kagent.dev/user-id"
+	AgentPrivateModeAnnotation = "kagent.dev/private-mode"
+	DefaultAgentUserID         = "admin@kagent.dev"
+	DefaultAgentPrivateMode    = true
+)
+
 // ObjectWithModelConfig represents a Kubernetes resource that can be associated with a ModelConfig.
 // It extends client.Object to provide access to standard Kubernetes object metadata
 // while adding the ability to specify which ModelConfig should be used for the resource.

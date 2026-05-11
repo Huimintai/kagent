@@ -72,10 +72,15 @@ func (h *ToolServersHandler) HandleListToolServers(w ErrorResponseWriter, r *htt
 			}
 		}
 
+		userID := ""
+		if toolServer.UserID != nil {
+			userID = *toolServer.UserID
+		}
 		toolServerWithTools[i] = api.ToolServerResponse{
 			Ref:             toolServer.Name,
 			GroupKind:       toolServer.GroupKind,
 			DiscoveredTools: discoveredTools,
+			UserID:          userID,
 		}
 	}
 
@@ -145,6 +150,15 @@ func (h *ToolServersHandler) handleCreateRemoteMCPServer(w ErrorResponseWriter, 
 		"toolServerNamespace", toolRef.Namespace,
 	)
 
+	if userID, err := GetUserID(r); err == nil && userID != "" {
+		ann := toolServerRequest.GetAnnotations()
+		if ann == nil {
+			ann = make(map[string]string)
+		}
+		ann[common.AgentUserIDAnnotation] = userID
+		toolServerRequest.SetAnnotations(ann)
+	}
+
 	if err := h.KubeClient.Create(r.Context(), toolServerRequest); err != nil {
 		w.RespondWithError(errors.NewInternalServerError("Failed to create RemoteMCPServer in Kubernetes", err))
 		return
@@ -177,6 +191,15 @@ func (h *ToolServersHandler) handleCreateMCPServer(w ErrorResponseWriter, r *htt
 	if err := Check(h.Authorizer, r, auth.Resource{Type: "ToolServer", Name: toolRef.String()}); err != nil {
 		w.RespondWithError(err)
 		return
+	}
+
+	if userID, err := GetUserID(r); err == nil && userID != "" {
+		ann := toolServerRequest.GetAnnotations()
+		if ann == nil {
+			ann = make(map[string]string)
+		}
+		ann[common.AgentUserIDAnnotation] = userID
+		toolServerRequest.SetAnnotations(ann)
 	}
 
 	if err := h.KubeClient.Create(r.Context(), toolServerRequest); err != nil {

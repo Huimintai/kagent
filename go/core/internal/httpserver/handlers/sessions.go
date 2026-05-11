@@ -192,8 +192,12 @@ func (h *SessionsHandler) HandleGetSession(w ErrorResponseWriter, r *http.Reques
 	log.V(1).Info("Getting session from database")
 	session, err := h.DatabaseService.GetSession(r.Context(), sessionID, userID)
 	if err != nil {
-		w.RespondWithError(errors.NewNotFoundError("Session not found", err))
-		return
+		// Fall back to pinned session lookup — non-owners can view pinned sessions
+		session, err = h.DatabaseService.GetPinnedSession(r.Context(), sessionID)
+		if err != nil {
+			w.RespondWithError(errors.NewNotFoundError("Session not found", err))
+			return
+		}
 	}
 
 	queryOptions := database.QueryOptions{
@@ -221,7 +225,7 @@ func (h *SessionsHandler) HandleGetSession(w ErrorResponseWriter, r *http.Reques
 		}
 	}
 
-	events, err := h.DatabaseService.ListEventsForSession(r.Context(), sessionID, userID, queryOptions)
+	events, err := h.DatabaseService.ListEventsForSession(r.Context(), sessionID, session.UserID, queryOptions)
 	if err != nil {
 		w.RespondWithError(errors.NewInternalServerError("Failed to get events for session", err))
 		return
@@ -287,6 +291,51 @@ func (h *SessionsHandler) HandleUpdateSession(w ErrorResponseWriter, r *http.Req
 	RespondWithJSON(w, http.StatusOK, data)
 }
 
+// HandlePatchSession handles PATCH /api/sessions/{session_id} requests using database
+func (h *SessionsHandler) HandlePatchSession(w ErrorResponseWriter, r *http.Request) {
+	log := ctrllog.FromContext(r.Context()).WithName("sessions-handler").WithValues("operation", "patch")
+
+	sessionID, err := GetPathParam(r, "session_id")
+	if err != nil {
+		w.RespondWithError(errors.NewBadRequestError("session_id is required", nil))
+		return
+	}
+
+	userID, err := GetUserID(r)
+	if err != nil {
+		w.RespondWithError(errors.NewBadRequestError("Failed to get user ID", err))
+		return
+	}
+
+	var req api.SessionRequest
+	if err := DecodeJSONBody(r, &req); err != nil {
+		w.RespondWithError(errors.NewBadRequestError("Invalid request body", err))
+		return
+	}
+
+	if req.Pinned == nil {
+		w.RespondWithError(errors.NewBadRequestError("pinned field is required", nil))
+		return
+	}
+
+	session, err := h.DatabaseService.GetSession(r.Context(), sessionID, userID)
+	if err != nil {
+		w.RespondWithError(errors.NewNotFoundError("Session not found", err))
+		return
+	}
+
+	session.Pinned = *req.Pinned
+
+	if err := h.DatabaseService.StoreSession(r.Context(), session); err != nil {
+		w.RespondWithError(errors.NewInternalServerError("Failed to update session", err))
+		return
+	}
+
+	log.Info("Successfully patched session", "pinned", session.Pinned)
+	data := api.NewResponse(session, "Successfully updated session", false)
+	RespondWithJSON(w, http.StatusOK, data)
+}
+
 // HandleDeleteSession handles DELETE /api/sessions/{session_id} requests using database
 func (h *SessionsHandler) HandleDeleteSession(w ErrorResponseWriter, r *http.Request) {
 	log := ctrllog.FromContext(r.Context()).WithName("sessions-handler").WithValues("operation", "delete-db")
@@ -333,11 +382,14 @@ func (h *SessionsHandler) HandleListTasksForSession(w ErrorResponseWriter, r *ht
 	}
 	log = log.WithValues("userID", userID)
 
-	// Verify session exists
+	// Verify session exists and is accessible — owner check first, then pinned fallback
 	_, err = h.DatabaseService.GetSession(r.Context(), sessionID, userID)
 	if err != nil {
-		w.RespondWithError(errors.NewNotFoundError("Session not found for given ID", err))
-		return
+		_, err = h.DatabaseService.GetPinnedSession(r.Context(), sessionID)
+		if err != nil {
+			w.RespondWithError(errors.NewNotFoundError("Session not found for given ID", err))
+			return
+		}
 	}
 
 	log.V(1).Info("Getting session tasks from database")

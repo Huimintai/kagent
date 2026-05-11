@@ -188,6 +188,10 @@ func FindOwnedObjects(ctx context.Context, cl client.Client, uid types.UID, name
 	for _, objectType := range objectTypes {
 		objs, err := GetList(ctx, cl, objectType, listOpts...)
 		if err != nil {
+			if meta.IsNoMatchError(err) {
+				// CRD not installed on this cluster; skip gracefully.
+				continue
+			}
 			return nil, err
 		}
 		maps.Copy(ownedObjects, objs)

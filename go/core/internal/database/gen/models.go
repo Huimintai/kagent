@@ -20,6 +20,17 @@ type Agent struct {
 	Type         string
 	Config       *adk.AgentConfig
 	WorkloadType string
+	UserID       string
+	PrivateMode  bool
+}
+
+type AgentComment struct {
+	ID        string
+	AgentID   string
+	UserID    string
+	Content   string
+	CreatedAt *time.Time
+	DeletedAt *time.Time
 }
 
 type CrewaiAgentMemory struct {
@@ -123,6 +134,7 @@ type Session struct {
 	DeletedAt *time.Time
 	AgentID   *string
 	Source    *string
+	Pinned    bool
 }
 
 type Task struct {
@@ -152,4 +164,5 @@ type Toolserver struct {
 	DeletedAt     *time.Time
 	Description   *string
 	LastConnected *time.Time
+	UserID        *string
 }

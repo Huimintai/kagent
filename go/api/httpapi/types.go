@@ -145,8 +145,10 @@ type OpenshellAgentHarnessListEntry struct {
 }
 
 type AgentResponse struct {
-	ID    string         `json:"id"`
-	Agent *AgentResource `json:"agent"`
+	ID          string         `json:"id"`
+	Agent       *AgentResource `json:"agent"`
+	UserID      string         `json:"user_id,omitempty"`
+	PrivateMode bool           `json:"private_mode"`
 	// Config         *adk.AgentConfig       `json:"config"`
 	ModelProvider         v1alpha2.ModelProvider          `json:"modelProvider"`
 	Model                 string                          `json:"model"`
@@ -167,6 +169,7 @@ type SessionRequest struct {
 	Name     *string                 `json:"name,omitempty"`
 	ID       *string                 `json:"id,omitempty"`
 	Source   *database.SessionSource `json:"source,omitempty"`
+	Pinned   *bool                   `json:"pinned,omitempty"`
 }
 
 // Run types
@@ -203,6 +206,7 @@ type ToolServerResponse struct {
 	Ref             string              `json:"ref"`
 	GroupKind       string              `json:"groupKind"`
 	DiscoveredTools []*v1alpha2.MCPTool `json:"discoveredTools"`
+	UserID          string              `json:"userId,omitempty"`
 }
 
 // Memory types
@@ -229,12 +233,15 @@ type UpdateMemoryRequest struct {
 	PineconeParams *v1alpha1.PineconeConfig `json:"pinecone,omitempty"`
 }
 
+// PromptTemplate types
+
 // PromptTemplateSummary is a lightweight entry for listing prompt ConfigMaps.
 type PromptTemplateSummary struct {
 	Namespace string   `json:"namespace"`
 	Name      string   `json:"name"`
 	KeyCount  int      `json:"keyCount"`
 	Keys      []string `json:"keys,omitempty"`
+	UserID    string   `json:"userId,omitempty"`
 }
 
 // PromptTemplateDetail includes all string keys for editing.
@@ -242,6 +249,7 @@ type PromptTemplateDetail struct {
 	Namespace string            `json:"namespace"`
 	Name      string            `json:"name"`
 	Data      map[string]string `json:"data"`
+	UserID    string            `json:"userId,omitempty"`
 }
 
 // CreatePromptTemplateRequest creates a labeled ConfigMap in the namespace.
@@ -283,4 +291,55 @@ type SessionRunsResponse struct {
 // SessionRunsData represents the data part of session runs response
 type SessionRunsData struct {
 	Runs []any `json:"runs"`
+}
+
+// Stats types for Dashboard
+
+// AgentStat holds per-agent session/message statistics for the leaderboard.
+type AgentStat struct {
+	AgentID      string  `json:"agentId"`
+	UserCount    int64   `json:"userCount"`
+	SessionCount int64   `json:"sessionCount"`
+	MessageCount int64   `json:"messageCount"`
+	Score        float64 `json:"score"`
+	LastActiveAt *string `json:"lastActiveAt,omitempty"`
+}
+
+// ToolServerStat holds per-tool-server statistics for the leaderboard.
+type ToolServerStat struct {
+	Name          string  `json:"name"`
+	GroupKind     string  `json:"groupKind"`
+	AgentCount    int64   `json:"agentCount"`
+	LastConnected *string `json:"lastConnected,omitempty"`
+}
+
+// PlatformSummary holds total counts for the platform overview.
+type PlatformSummary struct {
+	TotalAgents      int64 `json:"totalAgents"`
+	TotalSessions    int64 `json:"totalSessions"`
+	TotalToolServers int64 `json:"totalToolServers"`
+	SessionsToday    int64 `json:"sessionsToday"`
+}
+
+// StatsResponse is the response body for the /api/stats endpoint.
+type StatsResponse struct {
+	Summary   PlatformSummary  `json:"summary"`
+	TopAgents []AgentStat      `json:"topAgents"`
+	TopMCPs   []ToolServerStat `json:"topMCPs"`
+}
+
+// Comment types for Agent feedback
+
+// CreateCommentRequest represents a request to create a comment on an agent.
+type CreateCommentRequest struct {
+	Content string `json:"content"`
+}
+
+// CommentResponse represents a single agent comment in the API response.
+type CommentResponse struct {
+	ID        string `json:"id"`
+	AgentID   string `json:"agentId"`
+	UserID    string `json:"userId"`
+	Content   string `json:"content"`
+	CreatedAt string `json:"createdAt"`
 }

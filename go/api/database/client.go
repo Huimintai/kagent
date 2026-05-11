@@ -39,6 +39,7 @@ type Client interface {
 
 	// Get methods
 	GetSession(ctx context.Context, sessionID string, userID string) (*Session, error)
+	GetPinnedSession(ctx context.Context, sessionID string) (*Session, error)
 	GetAgent(ctx context.Context, name string) (*Agent, error)
 	GetTask(ctx context.Context, id string) (*protocol.Task, error)
 	GetTool(ctx context.Context, name string) (*Tool, error)
@@ -81,4 +82,13 @@ type Client interface {
 	ListAgentMemories(ctx context.Context, agentName, userID string) ([]Memory, error)
 	DeleteAgentMemory(ctx context.Context, agentName, userID string) error
 	PruneExpiredMemories(ctx context.Context) error
+
+	// Stats methods
+	GetStats(ctx context.Context, limit int) (*PlatformStats, error)
+
+	// Agent comment methods
+	CreateAgentComment(ctx context.Context, agentID, userID, content string) (*AgentComment, error)
+	ListAgentComments(ctx context.Context, agentID string, limit int) ([]AgentComment, error)
+	DeleteAgentComment(ctx context.Context, commentID, userID string) error
+	CountAgentComments(ctx context.Context, agentID string) (int64, error)
 }

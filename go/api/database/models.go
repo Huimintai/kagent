@@ -19,6 +19,11 @@ type Agent struct {
 	Type         string                `json:"type"`
 	WorkloadType v1alpha2.WorkloadMode `json:"workload_type"`
 	Config       *adk.AgentConfig      `json:"config"`
+
+	// UserID and PrivateMode are agent access metadata stored via K8s annotations
+	// and synced to the DB agent record by the reconciler and HTTP handlers.
+	UserID      string `json:"user_id"`
+	PrivateMode bool   `json:"private_mode"`
 }
 
 type Event struct {
@@ -74,6 +79,7 @@ type Session struct {
 	// Source indicates how this session was created.
 	// SessionSourceUser = user-initiated, SessionSourceAgent = created by a parent agent's A2A call.
 	Source *SessionSource `json:"source,omitempty"`
+	Pinned bool           `json:"pinned"`
 }
 
 type Task struct {
@@ -154,6 +160,7 @@ type ToolServer struct {
 	GroupKind     string     `json:"group_kind"`
 	Description   string     `json:"description"`
 	LastConnected *time.Time `json:"last_connected,omitempty"`
+	UserID        *string    `json:"user_id,omitempty"`
 }
 
 type LangGraphCheckpoint struct {
@@ -217,8 +224,49 @@ type Memory struct {
 	AccessCount int64           `json:"access_count"`
 }
 
+type AgentComment struct {
+	ID        string     `json:"id"`
+	AgentID   string     `json:"agent_id"`
+	UserID    string     `json:"user_id"`
+	Content   string     `json:"content"`
+	CreatedAt time.Time  `json:"created_at"`
+	DeletedAt *time.Time `json:"deleted_at,omitempty"`
+}
+
 // AgentMemorySearchResult is the result of a vector similarity search over Memory.
 type AgentMemorySearchResult struct {
 	Memory
 	Score float64 `json:"score"`
+}
+
+// PlatformStats holds aggregated statistics for the dashboard leaderboard.
+type PlatformStats struct {
+	Summary   PlatformSummary
+	TopAgents []AgentStatRow
+	TopMCPs   []ToolServerStatRow
+}
+
+// PlatformSummary holds total counts for the platform overview.
+type PlatformSummary struct {
+	TotalAgents      int64
+	TotalSessions    int64
+	TotalToolServers int64
+	SessionsToday    int64
+}
+
+// AgentStatRow holds per-agent session/message statistics.
+type AgentStatRow struct {
+	AgentID      string
+	UserCount    int64
+	SessionCount int64
+	MessageCount int64
+	LastActiveAt *time.Time
+}
+
+// ToolServerStatRow holds per-tool-server statistics.
+type ToolServerStatRow struct {
+	Name          string
+	GroupKind     string
+	AgentCount    int64
+	LastConnected *time.Time
 }

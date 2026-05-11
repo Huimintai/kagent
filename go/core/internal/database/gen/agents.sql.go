@@ -12,7 +12,7 @@ import (
 )
 
 const getAgent = `-- name: GetAgent :one
-SELECT id, created_at, updated_at, deleted_at, type, config, workload_type FROM agent
+SELECT id, created_at, updated_at, deleted_at, type, config, workload_type, user_id, private_mode FROM agent
 WHERE id = $1 AND deleted_at IS NULL
 LIMIT 1
 `
@@ -28,12 +28,14 @@ func (q *Queries) GetAgent(ctx context.Context, id string) (Agent, error) {
 		&i.Type,
 		&i.Config,
 		&i.WorkloadType,
+		&i.UserID,
+		&i.PrivateMode,
 	)
 	return i, err
 }
 
 const listAgents = `-- name: ListAgents :many
-SELECT id, created_at, updated_at, deleted_at, type, config, workload_type FROM agent
+SELECT id, created_at, updated_at, deleted_at, type, config, workload_type, user_id, private_mode FROM agent
 WHERE deleted_at IS NULL
 ORDER BY created_at ASC
 `
@@ -55,6 +57,8 @@ func (q *Queries) ListAgents(ctx context.Context) ([]Agent, error) {
 			&i.Type,
 			&i.Config,
 			&i.WorkloadType,
+			&i.UserID,
+			&i.PrivateMode,
 		); err != nil {
 			return nil, err
 		}
@@ -76,14 +80,16 @@ func (q *Queries) SoftDeleteAgent(ctx context.Context, id string) error {
 }
 
 const upsertAgent = `-- name: UpsertAgent :exec
-INSERT INTO agent (id, type, workload_type, config, created_at, updated_at)
-VALUES ($1, $2, $3, $4, NOW(), NOW())
+INSERT INTO agent (id, type, workload_type, config, user_id, private_mode, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
 ON CONFLICT (id) DO UPDATE SET
-    type       = EXCLUDED.type,
+    type         = EXCLUDED.type,
     workload_type = EXCLUDED.workload_type,
-    config     = EXCLUDED.config,
-    updated_at = NOW(),
-    deleted_at = NULL
+    config       = EXCLUDED.config,
+    user_id      = EXCLUDED.user_id,
+    private_mode = EXCLUDED.private_mode,
+    updated_at   = NOW(),
+    deleted_at   = NULL
 `
 
 type UpsertAgentParams struct {
@@ -91,6 +97,8 @@ type UpsertAgentParams struct {
 	Type         string
 	WorkloadType string
 	Config       *adk.AgentConfig
+	UserID       string
+	PrivateMode  bool
 }
 
 func (q *Queries) UpsertAgent(ctx context.Context, arg UpsertAgentParams) error {
@@ -99,6 +107,8 @@ func (q *Queries) UpsertAgent(ctx context.Context, arg UpsertAgentParams) error 
 		arg.Type,
 		arg.WorkloadType,
 		arg.Config,
+		arg.UserID,
+		arg.PrivateMode,
 	)
 	return err
 }
