@@ -12,6 +12,8 @@ import {
   Plus,
   FunctionSquare,
   AlertCircle,
+  User,
+  Loader2,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -23,6 +25,7 @@ import { toast } from "sonner";
 import { useAgents } from "@/components/AgentsProvider";
 import { getDiscoveredToolDescription, getDiscoveredToolDisplayName } from "@/lib/toolUtils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useUserStore } from "@/lib/userStore";
 
 function setsEqualString(a: Set<string>, b: Set<string>): boolean {
   if (a.size !== b.size) {
@@ -41,6 +44,7 @@ type McpServersViewProps = {
   isLoading: boolean;
   loadError: string | null;
   onRefresh: () => Promise<void>;
+  pendingServers?: Set<string>;
 };
 
 type DisplayServer = {
@@ -52,8 +56,9 @@ type DisplayServer = {
 /**
  * One screen: search MCP tool servers, expand to see tools, add/remove connections.
  */
-export function McpServersView({ servers, isLoading, loadError, onRefresh }: McpServersViewProps) {
+export function McpServersView({ servers, isLoading, loadError, onRefresh, pendingServers = new Set() }: McpServersViewProps) {
   const { refreshTools } = useAgents();
+  const currentUserId = useUserStore((state) => state.userId);
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedServers, setExpandedServers] = useState<Set<string>>(new Set());
   const [showConfirmDelete, setShowConfirmDelete] = useState<string | null>(null);
@@ -228,6 +233,9 @@ export function McpServersView({ servers, isLoading, loadError, onRefresh }: Mcp
               return null;
             }
             const serverName: string = server.ref;
+            const showOwnerIcon = !!(server.userId && server.userId === currentUserId);
+            const canDelete = !server.userId ? !currentUserId : server.userId === currentUserId;
+            const isPending = pendingServers.has(serverName);
             const isExpanded = expandedServers.has(serverName);
             return (
               <li key={server.ref} className="overflow-hidden rounded-xl border border-border/60 bg-card/30 shadow-sm">
@@ -253,11 +261,19 @@ export function McpServersView({ servers, isLoading, loadError, onRefresh }: Mcp
                         <ChevronRight className="h-5 w-5 shrink-0" aria-hidden />
                       )}
                       <div className="min-w-0 text-left">
-                        <div className="font-medium break-words" translate="no">
+                        <div className="flex items-center gap-1.5 font-medium break-words" translate="no">
                           {highlight(server.ref) || server.ref}
+                          {showOwnerIcon && <User className="h-3 w-3 shrink-0 text-primary" aria-label="Owned by you" />}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          {rowTools.length} tool{rowTools.length !== 1 ? "s" : ""}
+                          {isPending ? (
+                            <span className="flex items-center gap-1">
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                              Loading tools ...
+                            </span>
+                          ) : (
+                            <>{rowTools.length} tool{rowTools.length !== 1 ? "s" : ""}</>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -278,7 +294,8 @@ export function McpServersView({ servers, isLoading, loadError, onRefresh }: Mcp
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem
-                          className="text-destructive focus:bg-destructive/10"
+                          className={canDelete ? "text-destructive focus:bg-destructive/10" : "text-muted-foreground"}
+                          disabled={!canDelete}
                           onSelect={(e) => {
                             e.preventDefault();
                             setOpenDropdownMenu(null);
@@ -328,6 +345,11 @@ export function McpServersView({ servers, isLoading, loadError, onRefresh }: Mcp
                             );
                           })}
                       </div>
+                    ) : isPending ? (
+                      <p className="flex items-center justify-center gap-2 p-2 text-center text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Loading tools ...
+                      </p>
                     ) : (
                       <p className="p-2 text-center text-sm text-muted-foreground">
                         No tools are registered for this server.

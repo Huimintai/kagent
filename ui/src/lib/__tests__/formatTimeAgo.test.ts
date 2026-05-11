@@ -33,7 +33,7 @@ describe("getLastActivityTimeIso", () => {
   it("falls back to creationTimestamp", () => {
     const agent = {
       metadata: { name: "a", creationTimestamp: "2025-12-01T00:00:00.000Z" },
-    } as Agent;
+    } as unknown as Agent;
     expect(getLastActivityTimeIso(agent)).toBe("2025-12-01T00:00:00.000Z");
   });
 });

@@ -1,21 +1,47 @@
 'use client'
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { Button } from "./ui/button";
 import KAgentLogoWithText from "./kagent-logo-text";
 import KagentLogo from "./kagent-logo";
-import { Plus, Menu, X, ChevronDown, Brain, Server, Eye, Hammer, HomeIcon, ScrollText, Cable } from "lucide-react";
+import { Plus, Menu, X, ChevronDown, Brain, Server, Eye, Hammer, HomeIcon, ScrollText, LogOut, Clock, Construction, BarChart3 } from "lucide-react";
+import { useAppConfig } from "@/lib/configStore";
+import { Identicon } from "./Identicon";
 import { ThemeToggle } from "./ThemeToggle";
-import { UserMenu } from "./UserMenu";
+import GitHubConnectButton from "./GitHubConnectButton";
+import { useUserStore } from "@/lib/userStore";
+import { OidcExpiryBanner, GithubExpiryBanner } from "./TokenExpiryBanner";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
 export function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [githubExpiredLabels, setGithubExpiredLabels] = useState<string[]>([]);
+  const [rightControlsWidth, setRightControlsWidth] = useState(0);
+  const rightControlsRef = useRef<HTMLDivElement>(null);
+  const userId = useUserStore((state) => state.userId);
+  const clearLoginSession = useUserStore((state) => state.clearLoginSession);
+  const { disableSchedules, disablePromptLibrary, disableDashboard } = useAppConfig();
+
+  useEffect(() => { setMounted(true); }, []);
+
+  useEffect(() => {
+    const el = rightControlsRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => setRightControlsWidth(el.offsetWidth));
+    observer.observe(el);
+    setRightControlsWidth(el.offsetWidth);
+    return () => observer.disconnect();
+  }, []);
+
+  const displayUserId = mounted ? userId : "";
 
   const toggleMenu = () => {
     setIsMenuOpen(!isMenuOpen);
@@ -29,11 +55,17 @@ export function Header() {
   };
 
   return (
-    <nav className="py-4 md:py-8 border-b">
+    <nav className="relative z-20 py-3 border-b bg-background/80 backdrop-blur-md">
       <div className="max-w-6xl mx-auto px-4 md:px-6">
+        <OidcExpiryBanner />
+        <GithubExpiryBanner
+          githubExpiredLabels={githubExpiredLabels}
+          rightSpacerWidth={rightControlsWidth}
+        />
         <div className="flex justify-between items-center">
-          <Link href="/">
+          <Link href="/" className="flex items-center gap-3">
             <KAgentLogoWithText className="h-5" />
+            <span className="text-sm font-semibold text-muted-foreground hidden lg:block">DBCI Agentic AI Platform</span>
           </Link>
           
           {/* Mobile menu button */}
@@ -47,6 +79,14 @@ export function Header() {
           
           {/* Desktop navigation */}
           <div className="hidden md:flex items-center space-x-2 lg:space-x-4">
+            {!disableDashboard && (
+            <Button variant="link" className="text-secondary-foreground" asChild>
+              <Link href="/dashboard" className="gap-1">
+                <BarChart3 className="h-4 w-4" />
+                Dashboard
+              </Link>
+            </Button>
+            )}
             <Button variant="link" className="text-secondary-foreground" asChild>
               <Link href="/" className="gap-1">
                 <HomeIcon className="h-4 w-4" />
@@ -64,23 +104,11 @@ export function Header() {
                   <ChevronDown className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-56">
+              <DropdownMenuContent align="end" className="w-48">
                 <DropdownMenuItem asChild>
                   <Link href="/agents/new" className="gap-2 cursor-pointer w-full">
                     <KagentLogo className="h-4 w-4 text-primary" />
                     New Agent
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href="/agents/new-harness" className="gap-2 cursor-pointer w-full">
-                    <Cable className="h-4 w-4 shrink-0 text-primary" />
-                    New Agent Harness
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href="/models/new" className="gap-2 cursor-pointer w-full">
-                    <Brain className="h-4 w-4" />
-                    New Model
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
@@ -89,15 +117,41 @@ export function Header() {
                     New MCP Server
                   </Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href="/prompts/new" className="gap-2 cursor-pointer w-full">
-                    <ScrollText className="h-4 w-4" />
-                    New prompt library
-                  </Link>
-                </DropdownMenuItem>
+                {disablePromptLibrary ? (
+                  <DropdownMenuItem disabled>
+                    <span className="gap-2 w-full flex items-center text-muted-foreground">
+                      <ScrollText className="h-4 w-4" />
+                      New Prompt Library
+                      <Construction className="ml-auto h-4 w-4" />
+                    </span>
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem asChild>
+                    <Link href="/prompts/new" className="gap-2 cursor-pointer w-full">
+                      <ScrollText className="h-4 w-4" />
+                      New Prompt Library
+                    </Link>
+                  </DropdownMenuItem>
+                )}
+                {disableSchedules ? (
+                  <DropdownMenuItem disabled>
+                    <span className="gap-2 w-full flex items-center text-muted-foreground">
+                      <Clock className="h-4 w-4" />
+                      New Schedule
+                      <Construction className="ml-auto h-4 w-4" />
+                    </span>
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem asChild>
+                    <Link href="/schedules/new" className="gap-2 cursor-pointer w-full">
+                      <Clock className="h-4 w-4" />
+                      New Schedule
+                    </Link>
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
-            
+
             {/* View Dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -125,33 +179,82 @@ export function Header() {
                     MCP & tools
                   </Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href="/prompts" className="gap-2 cursor-pointer w-full">
-                    <ScrollText className="h-4 w-4" />
-                    Prompt Library
-                  </Link>
-                </DropdownMenuItem>
+                {disablePromptLibrary ? (
+                  <DropdownMenuItem disabled>
+                    <span className="gap-2 w-full flex items-center text-muted-foreground">
+                      <ScrollText className="h-4 w-4" />
+                      Prompt Library
+                      <Construction className="ml-auto h-4 w-4" />
+                    </span>
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem asChild>
+                    <Link href="/prompts" className="gap-2 cursor-pointer w-full">
+                      <ScrollText className="h-4 w-4" />
+                      Prompt Library
+                    </Link>
+                  </DropdownMenuItem>
+                )}
+                {disableSchedules ? (
+                  <DropdownMenuItem disabled>
+                    <span className="gap-2 w-full flex items-center text-muted-foreground">
+                      <Clock className="h-4 w-4" />
+                      Schedules
+                      <Construction className="ml-auto h-4 w-4" />
+                    </span>
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem asChild>
+                    <Link href="/schedules" className="gap-2 cursor-pointer w-full">
+                      <Clock className="h-4 w-4" />
+                      Schedules
+                    </Link>
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
 
-
-            {/* Other Links */}
-            <Button variant="link" className="text-secondary-foreground" asChild>
-              <Link href="https://github.com/kagent-dev/kagent" target="_blank">Contribute</Link>
-            </Button>
-            <Button variant="link" className="text-secondary-foreground" asChild>
-              <Link href="https://discord.gg/Fu3k65f2k3" target="_blank">Community</Link>
-            </Button>
-            
-            <ThemeToggle />
-            <UserMenu />
+            <div className="flex items-center gap-2" ref={rightControlsRef}>
+              <GitHubConnectButton
+                onTokenExpired={setGithubExpiredLabels}
+                onDropdownOpen={() => setGithubExpiredLabels([])}
+              />
+              <ThemeToggle />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" aria-label="User menu" className="overflow-hidden p-0">
+                    <Identicon value={displayUserId || "user"} size={32} />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="max-w-64">
+                  <DropdownMenuItem disabled className="break-all">
+                    {displayUserId}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={clearLoginSession}>
+                    <LogOut className="h-4 w-4" />
+                    Sign out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
         </div>
-
+        
         {/* Mobile menu */}
         {isMenuOpen && (
           <div className="md:hidden pt-4 pb-2 animate-in fade-in slide-in-from-top duration-300">
             <div className="flex flex-col space-y-1">
+              {/* Mobile Dashboard Link */}
+              {!disableDashboard && (
+              <Button variant="ghost" className="text-secondary-foreground justify-start px-1 gap-2" asChild>
+                <Link href="/dashboard" onClick={handleMobileLinkClick}>
+                  <BarChart3 className="h-4 w-4" />
+                  Dashboard
+                </Link>
+              </Button>
+              )}
+
               {/* Mobile Home Link */}
               <Button variant="ghost" className="text-secondary-foreground justify-start px-1 gap-2" asChild>
                 <Link href="/" onClick={handleMobileLinkClick}>
@@ -188,12 +291,38 @@ export function Header() {
                       MCP & tools
                     </Link>
                   </DropdownMenuItem>
-                  <DropdownMenuItem asChild onClick={handleMobileLinkClick}>
-                    <Link href="/prompts" className="gap-2 cursor-pointer w-full">
-                      <ScrollText className="h-4 w-4" />
-                      Prompt Library
-                    </Link>
-                  </DropdownMenuItem>
+                  {disablePromptLibrary ? (
+                    <DropdownMenuItem disabled>
+                      <span className="gap-2 w-full flex items-center text-muted-foreground">
+                        <ScrollText className="h-4 w-4" />
+                        Prompt Library
+                        <Construction className="ml-auto h-4 w-4" />
+                      </span>
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem asChild onClick={handleMobileLinkClick}>
+                      <Link href="/prompts" className="gap-2 cursor-pointer w-full">
+                        <ScrollText className="h-4 w-4" />
+                        Prompt Library
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {disableSchedules ? (
+                    <DropdownMenuItem disabled>
+                      <span className="gap-2 w-full flex items-center text-muted-foreground">
+                        <Clock className="h-4 w-4" />
+                        Schedules
+                        <Construction className="ml-auto h-4 w-4" />
+                      </span>
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem asChild onClick={handleMobileLinkClick}>
+                      <Link href="/schedules" className="gap-2 cursor-pointer w-full">
+                        <Clock className="h-4 w-4" />
+                        Schedules
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
 
@@ -214,43 +343,76 @@ export function Header() {
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild onClick={handleMobileLinkClick}>
-                    <Link href="/agents/new-harness" className="gap-2 cursor-pointer w-full">
-                      <Cable className="h-4 w-4 shrink-0 text-primary" />
-                      New Agent Harness
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild onClick={handleMobileLinkClick}>
-                    <Link href="/models/new" className="gap-2 cursor-pointer w-full">
-                      <Brain className="h-4 w-4" />
-                      New Model
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild onClick={handleMobileLinkClick}>
                     <Link href="/mcp/new" className="gap-2 cursor-pointer w-full">
                       <Server className="h-4 w-4" />
                       New MCP Server
                     </Link>
                   </DropdownMenuItem>
-                  <DropdownMenuItem asChild onClick={handleMobileLinkClick}>
-                    <Link href="/prompts/new" className="gap-2 cursor-pointer w-full">
-                      <ScrollText className="h-4 w-4" />
-                      New prompt library
-                    </Link>
-                  </DropdownMenuItem>
+                  {disablePromptLibrary ? (
+                    <DropdownMenuItem disabled>
+                      <span className="gap-2 w-full flex items-center text-muted-foreground">
+                        <ScrollText className="h-4 w-4" />
+                        New Prompt Library
+                        <Construction className="ml-auto h-4 w-4" />
+                      </span>
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem asChild onClick={handleMobileLinkClick}>
+                      <Link href="/prompts/new" className="gap-2 cursor-pointer w-full">
+                        <ScrollText className="h-4 w-4" />
+                        New Prompt Library
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {disableSchedules ? (
+                    <DropdownMenuItem disabled>
+                      <span className="gap-2 w-full flex items-center text-muted-foreground">
+                        <Clock className="h-4 w-4" />
+                        New Schedule
+                        <Construction className="ml-auto h-4 w-4" />
+                      </span>
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem asChild onClick={handleMobileLinkClick}>
+                      <Link href="/schedules/new" className="gap-2 cursor-pointer w-full">
+                        <Clock className="h-4 w-4" />
+                        New Schedule
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
-              
-              {/* Mobile Other Links */}
-              <Button variant="ghost" className="text-secondary-foreground justify-start px-1" asChild>
-                <Link href="https://github.com/kagent-dev/kagent" target="_blank" onClick={handleMobileLinkClick}>Contribute</Link>
-              </Button>
-              <Button variant="ghost" className="text-secondary-foreground justify-start px-1" asChild>
-                <Link href="https://discord.gg/Fu3k65f2k3" target="_blank" onClick={handleMobileLinkClick}>Community</Link>
-              </Button>
 
-              <div className="flex items-center justify-between py-2">
-                <UserMenu onMobileLinkClick={handleMobileLinkClick} />
+              <div className="flex items-center justify-end gap-2 py-2">
+                <GitHubConnectButton
+                  onTokenExpired={setGithubExpiredLabels}
+                  onDropdownOpen={() => setGithubExpiredLabels([])}
+                />
                 <ThemeToggle />
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" aria-label="User menu" className="overflow-hidden p-0">
+                      <Identicon value={displayUserId || "user"} size={32} />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="max-w-64">
+                    <DropdownMenuLabel>Signed in as</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem disabled className="break-all">
+                      {displayUserId}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => {
+                        clearLoginSession()
+                        handleMobileLinkClick()
+                      }}
+                    >
+                      <LogOut className="h-4 w-4" />
+                      Sign out
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
           </div>

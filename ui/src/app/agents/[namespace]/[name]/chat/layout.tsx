@@ -1,5 +1,6 @@
 import { getAgent, getAgents } from "@/app/actions/agents";
 import { getServers } from "@/app/actions/servers";
+import { getCurrentUserId } from "@/app/actions/utils";
 import ChatLayoutUI from "@/components/chat/ChatLayoutUI";
 import { ErrorState } from "@/components/ErrorState";
 import { SidebarProvider } from "@/components/ui/sidebar";
@@ -52,10 +53,10 @@ export default async function ChatLayout({
 }) {
   // Await the params
   const { name, namespace } = await params;
-  const { currentAgent, allAgents, allTools, error } = await getData(
-    name,
-    namespace
-  );
+  const [{ currentAgent, allAgents, allTools, error }, currentUserId] = await Promise.all([
+    getData(name, namespace),
+    getCurrentUserId(),
+  ]);
 
   if (error || !currentAgent) {
     return (
@@ -80,6 +81,7 @@ export default async function ChatLayout({
         currentAgent={currentAgent}
         allAgents={allAgents}
         allTools={allTools}
+        currentUserId={currentUserId}
       >
         {children}
       </ChatLayoutUI>

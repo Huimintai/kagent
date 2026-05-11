@@ -13,16 +13,50 @@ import {
   Tool,
 } from "@/types";
 import { revalidatePath } from "next/cache";
-import { fetchApi, createErrorResponse } from "./utils";
+import { fetchApi, createErrorResponse, getCurrentUserId } from "./utils";
 import { AgentFormData } from "@/components/AgentsProvider";
 import { isMcpTool } from "@/lib/toolUtils";
 import { k8sRefUtils } from "@/lib/k8sUtils";
-import { formRowsToGitRepos, type GitSkillFormRow } from "@/lib/agentSkillsForm";
+import { LABEL_CATEGORY, LABEL_HAS_MCP, LABEL_HAS_SKILL } from "@/lib/constants";
+import { GitSkillFormRow, formRowsToGitRepos } from "@/lib/agentSkillsForm";
 import { buildSandboxCRDraft } from "@/lib/openClawSandboxForm";
 
-function declarativeRuntimeFromForm(agentFormData: AgentFormData): DeclarativeRuntime {
-  return agentFormData.declarativeRuntime === "go" ? "go" : "python";
+const PRIVATE_MODE_ANNOTATION = "kagent.dev/private-mode";
+const USER_ID_ANNOTATION = "kagent.dev/user-id";
+
+function declarativeRuntimeFromForm(agentFormData: AgentFormData): DeclarativeRuntime | undefined {
+  return agentFormData.declarativeRuntime ?? undefined;
 }
+
+function getAgentPrivateMode(agentResponse: AgentResponse): boolean {
+  if (typeof agentResponse.private_mode === "boolean") {
+    return agentResponse.private_mode;
+  }
+
+  const annotationValue = agentResponse.agent.metadata.annotations?.[PRIVATE_MODE_ANNOTATION];
+  if (annotationValue === "true") {
+    return true;
+  }
+  if (annotationValue === "false") {
+    return false;
+  }
+
+  // No explicit visibility set. Agents created via kubectl/helm typically have
+  // neither private_mode nor user_id — treat them as public so they are visible
+  // to everyone. Agents created through the UI always have both annotations.
+  const hasOwner = !!(agentResponse.user_id || agentResponse.agent.metadata.annotations?.[USER_ID_ANNOTATION]);
+  if (!hasOwner) {
+    return false;
+  }
+
+  // Has an owner but no explicit visibility — default to private.
+  return true;
+}
+
+function getAgentOwnerId(agentResponse: AgentResponse): string {
+  return agentResponse.user_id || agentResponse.agent.metadata.annotations?.[USER_ID_ANNOTATION] || "";
+}
+
 
 function attachPromptTemplateToDeclarative(decl: DeclarativeAgentSpec, agentFormData: AgentFormData) {
   if (!agentFormData.promptSources?.some((s) => s.name.trim())) {
@@ -124,6 +158,8 @@ function fromAgentFormDataToAgent(agentFormData: AgentFormData): Agent {
             apiGroup: mcpServer.apiGroup,
             toolNames: mcpServer.toolNames,
             ...(requireApproval ? { requireApproval } : {}),
+            ...(mcpServer.allowedHeaders && mcpServer.allowedHeaders.length > 0 ? { allowedHeaders: mcpServer.allowedHeaders } : {}),
+            ...(mcpServer.sessionTokenLabel ? { sessionTokenLabel: mcpServer.sessionTokenLabel } : {}),
           },
         } as Tool;
       }
@@ -136,13 +172,13 @@ function fromAgentFormDataToAgent(agentFormData: AgentFormData): Agent {
 
         let name = agent.name;
         let namespace: string | undefined = agent.namespace;
-        
+
         if (k8sRefUtils.isValidRef(name)) {
           const parsed = k8sRefUtils.fromRef(name);
           name = parsed.name;
           // Ignore namespace on the name ref if one is set - using namespace/name format is legacy behavior
         }
-        
+
         // If no namespace is set, default to the agent's namespace
         if (!namespace) {
           namespace = agentNamespace;
@@ -163,10 +199,30 @@ function fromAgentFormDataToAgent(agentFormData: AgentFormData): Agent {
       return tool as Tool;
     });
 
+  // Auto-detect tool type from the agent's tools, skills, and CLI containers
+  const hasMcp = (agentFormData.tools || []).some((t) => isMcpTool(t));
+  const hasSkill = !!(agentFormData.inlineSkills && agentFormData.inlineSkills.length > 0);
+  const hasContainerSkill = !!(agentFormData.skillRefs && agentFormData.skillRefs.some(r => r.trim()));
+
+  const labels: Record<string, string> = {};
+  if (agentFormData.category) {
+    labels[LABEL_CATEGORY] = agentFormData.category;
+  }
+  if (hasMcp) {
+    labels[LABEL_HAS_MCP] = "true";
+  }
+  if (hasSkill || hasContainerSkill) {
+    labels[LABEL_HAS_SKILL] = "true";
+  }
+
   const base: Partial<Agent> = {
     metadata: {
       name: agentFormData.name,
       namespace: agentFormData.namespace || "",
+      annotations: {
+        [PRIVATE_MODE_ANNOTATION]: String(agentFormData.privateMode ?? true),
+      },
+      ...(Object.keys(labels).length > 0 && { labels }),
     },
     spec: {
       type,
@@ -183,9 +239,14 @@ function fromAgentFormDataToAgent(agentFormData: AgentFormData): Agent {
       tools: convertTools(agentFormData.tools || []),
     };
 
-    const skills = buildSkillsForAgentSpec(agentFormData);
-    if (skills) {
-      base.spec!.skills = skills;
+    if (agentFormData.inlineSkills && agentFormData.inlineSkills.length > 0) {
+      base.spec!.declarative!.inlineSkills = agentFormData.inlineSkills;
+    }
+
+    // CLI container refs — independent of inline skills
+    const skillRefs = (agentFormData.skillRefs || []).filter(r => r.trim());
+    if (skillRefs.length > 0) {
+      base.spec!.skills = { refs: skillRefs };
     }
 
     if (agentFormData.memory?.modelConfig) {
@@ -306,6 +367,8 @@ function fromAgentFormDataToSandboxAgent(agentFormData: AgentFormData): SandboxA
             apiGroup: mcpServer.apiGroup,
             toolNames: mcpServer.toolNames,
             ...(requireApproval ? { requireApproval } : {}),
+            ...(mcpServer.allowedHeaders && mcpServer.allowedHeaders.length > 0 ? { allowedHeaders: mcpServer.allowedHeaders } : {}),
+            ...(mcpServer.sessionTokenLabel ? { sessionTokenLabel: mcpServer.sessionTokenLabel } : {}),
           },
         } as Tool;
       }
@@ -536,6 +599,14 @@ export async function createAgent(agentConfig: AgentFormData, update: boolean = 
     }
 
     const agentPayload = fromAgentFormDataToAgent(agentConfig);
+
+    // Ensure user-id annotation is set so the agent is visible to its creator
+    const userId = await getCurrentUserId();
+    if (agentPayload.metadata?.annotations) {
+      agentPayload.metadata.annotations[USER_ID_ANNOTATION] = userId;
+    }
+
+
     const response = await fetchApi<BaseResponse<Agent>>(`/agents`, {
       method: update ? "PUT" : "POST",
       headers: {
@@ -567,9 +638,19 @@ export async function createAgent(agentConfig: AgentFormData, update: boolean = 
  */
 export async function getAgents(): Promise<BaseResponse<AgentResponse[]>> {
   try {
+    const currentUserId = await getCurrentUserId();
     const { data } = await fetchApi<BaseResponse<AgentResponse[]>>(`/agents`);
 
-    const sortedData = data?.sort((a, b) => {
+    const visibleAgents = data?.filter((agentResponse) => {
+      const isOwner = getAgentOwnerId(agentResponse) === currentUserId;
+      if (isOwner) {
+        return true;
+      }
+
+      return getAgentPrivateMode(agentResponse) === false;
+    });
+
+    const sortedData = visibleAgents?.sort((a, b) => {
       const aRef = k8sRefUtils.toRef(a.agent.metadata.namespace || "", a.agent.metadata.name);
       const bRef = k8sRefUtils.toRef(b.agent.metadata.namespace || "", b.agent.metadata.name);
       return aRef.localeCompare(bRef);

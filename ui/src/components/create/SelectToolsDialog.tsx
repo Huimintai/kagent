@@ -14,6 +14,7 @@ import { getToolResponseDisplayName, getToolResponseDescription, getToolResponse
 import { toast } from "sonner";
 import KagentLogo from "../kagent-logo";
 import { k8sRefUtils } from "@/lib/k8sUtils";
+import { useAppConfig } from "@/lib/configStore";
 
 // Maximum number of tools that can be selected
 const MAX_TOOLS_LIMIT = 20;
@@ -75,6 +76,7 @@ export const SelectToolsDialog: React.FC<SelectToolsDialogProps> = ({ open, onOp
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
   const [showFilters, setShowFilters] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<{ [key: string]: boolean }>({});
+  const { allowedNamespace } = useAppConfig();
   
   // Track previous open state to detect when dialog just opened
   const wasOpenRef = useRef(open);
@@ -124,8 +126,13 @@ export const SelectToolsDialog: React.FC<SelectToolsDialogProps> = ({ open, onOp
   const filteredAvailableItems = useMemo(() => {
     const searchLower = searchTerm.toLowerCase();
 
+    // Filter tools by allowed namespace (consistent with tools page filtering)
+    const namespaceFilteredTools = allowedNamespace
+      ? availableTools.filter((t) => t.server_name?.startsWith(allowedNamespace + "/"))
+      : availableTools;
+
     const allTools: Array<{ tool: ToolsResponse; server: ToolsResponse }> = [];
-    availableTools.forEach((tool) => {
+    namespaceFilteredTools.forEach((tool) => {
       allTools.push({ tool, server: tool });
     });
 
@@ -142,7 +149,10 @@ export const SelectToolsDialog: React.FC<SelectToolsDialogProps> = ({ open, onOp
     });
 
     const agentCategorySelected = selectedCategories.size === 0 || selectedCategories.has("Agents");
-    const agents = agentCategorySelected ? availableAgents.filter(agentResp => {
+    const namespaceFilteredAgents = allowedNamespace
+      ? availableAgents.filter((a) => a.agent.metadata.namespace === allowedNamespace)
+      : availableAgents;
+    const agents = agentCategorySelected ? namespaceFilteredAgents.filter(agentResp => {
         const agentRef = k8sRefUtils.toRef(agentResp.agent.metadata.namespace || "", agentResp.agent.metadata.name).toLowerCase();
         const agentDesc = agentResp.agent.spec.description?.toLowerCase();
         return agentRef.includes(searchLower) || (agentDesc && agentDesc.includes(searchLower));
