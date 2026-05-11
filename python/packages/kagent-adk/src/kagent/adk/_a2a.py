@@ -101,10 +101,23 @@ class KAgentApp:
             session_service = KAgentSessionService(http_client)
 
             if self.agent_config and self.agent_config.memory is not None:
+                embedding_cfg = self.agent_config.memory.embedding
+                # For sap_ai_core provider, backfill auth_url from the LLM model config
+                # when not already present (e.g. older controller versions that don't emit auth_url).
+                if (
+                    embedding_cfg is not None
+                    and embedding_cfg.provider == "sap_ai_core"
+                    and not embedding_cfg.auth_url
+                    and self.agent_config.model is not None
+                    and getattr(self.agent_config.model, "type", None) == "sap_ai_core"
+                ):
+                    embedding_cfg = embedding_cfg.model_copy(
+                        update={"auth_url": getattr(self.agent_config.model, "auth_url", None)}
+                    )
                 memory_service = KagentMemoryService(
                     agent_name=self.app_name,
                     http_client=http_client,
-                    embedding_config=self.agent_config.memory.embedding,
+                    embedding_config=embedding_cfg,
                     ttl_days=self.agent_config.memory.ttl_days,
                 )
 

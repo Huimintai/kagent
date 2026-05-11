@@ -20,6 +20,9 @@ import (
 // userIDContextKey is the context key for passing the session user_id to the subagent.
 type userIDContextKey struct{}
 
+// authorizationContextKey is the context key for passing the Authorization header to the subagent.
+type authorizationContextKey struct{}
+
 // userIDForwardingInterceptor forwards the session user_id as an x-user-id header.
 type userIDForwardingInterceptor struct {
 	a2aclient.PassthroughInterceptor
@@ -28,6 +31,11 @@ type userIDForwardingInterceptor struct {
 func (u *userIDForwardingInterceptor) Before(ctx context.Context, req *a2aclient.Request) (context.Context, error) {
 	if uid, ok := ctx.Value(userIDContextKey{}).(string); ok && uid != "" {
 		req.Meta.Append("x-user-id", uid)
+	}
+	// Forward the parent's Authorization header so sub-agent MCP tools
+	// can authenticate against downstream services (e.g. kubectl clusters).
+	if auth, ok := ctx.Value(authorizationContextKey{}).(string); ok && auth != "" {
+		req.Meta.Append("authorization", auth)
 	}
 	return ctx, nil
 }
@@ -160,6 +168,14 @@ func (s *remoteA2AState) handleFirstCall(ctx tool.Context, requestText string) (
 	message.ContextID = s.lastContextID
 
 	sendCtx := context.WithValue(ctx, userIDContextKey{}, ctx.UserID())
+	// Propagate Authorization header from parent session state to sub-agent.
+	if headersRaw, err := ctx.State().Get("headers"); err == nil {
+		if headers, ok := headersRaw.(map[string]any); ok {
+			if auth, ok := headers["authorization"].(string); ok && auth != "" {
+				sendCtx = context.WithValue(sendCtx, authorizationContextKey{}, auth)
+			}
+		}
+	}
 	result, err := client.SendMessage(sendCtx, &a2atype.MessageSendParams{Message: message})
 	if err != nil {
 		slog.Error("Remote agent request failed", "tool", s.name, "error", err)
@@ -210,6 +226,14 @@ func (s *remoteA2AState) handleResume(ctx tool.Context) (map[string]any, error) 
 	}
 
 	sendCtx := context.WithValue(ctx, userIDContextKey{}, ctx.UserID())
+	// Propagate Authorization header from parent session state to sub-agent.
+	if headersRaw, err := ctx.State().Get("headers"); err == nil {
+		if headers, ok := headersRaw.(map[string]any); ok {
+			if auth, ok := headers["authorization"].(string); ok && auth != "" {
+				sendCtx = context.WithValue(sendCtx, authorizationContextKey{}, auth)
+			}
+		}
+	}
 	result, err := client.SendMessage(sendCtx, &a2atype.MessageSendParams{Message: message})
 	if err != nil {
 		slog.Error("Remote agent resume failed", "tool", subagentName, "error", err)

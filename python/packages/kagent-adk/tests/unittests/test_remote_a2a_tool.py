@@ -237,6 +237,45 @@ class TestFirstCall:
 
         assert captured_contexts[0].state["x-user-id"] == "alice@example.com"
 
+    async def test_authorization_header_forwarded_in_call_context(self):
+        """The parent session's Authorization header is forwarded via ClientCallContext."""
+        tool = _make_tool()
+        task = _make_task(TaskState.completed, text="ok")
+        captured_contexts: list = []
+
+        async def capture(*, request, context=None, **kw):
+            captured_contexts.append(context)
+            yield (task, None)
+
+        p, _ = _patch_client(tool, capture)
+        try:
+            ctx = MockToolContext()
+            ctx.state["headers"] = {"authorization": "Bearer test-oidc-token"}
+            await tool.run_async(args={"request": "go"}, tool_context=ctx)
+        finally:
+            p.stop()
+
+        assert captured_contexts[0].state["authorization"] == "Bearer test-oidc-token"
+
+    async def test_authorization_header_not_set_when_absent(self):
+        """When no Authorization header exists in parent state, it is not forwarded."""
+        tool = _make_tool()
+        task = _make_task(TaskState.completed, text="ok")
+        captured_contexts: list = []
+
+        async def capture(*, request, context=None, **kw):
+            captured_contexts.append(context)
+            yield (task, None)
+
+        p, _ = _patch_client(tool, capture)
+        try:
+            ctx = MockToolContext()
+            await tool.run_async(args={"request": "go"}, tool_context=ctx)
+        finally:
+            p.stop()
+
+        assert "authorization" not in captured_contexts[0].state
+
 
 # ---------------------------------------------------------------------------
 # HITL input_required tests
@@ -375,6 +414,26 @@ class TestHITLResume:
         data = sent[0].parts[0].root.data
         assert data[KAGENT_HITL_DECISION_TYPE_KEY] == KAGENT_HITL_DECISION_TYPE_APPROVE
         assert data["ask_user_answers"] == ["yes", "42"]
+
+    async def test_authorization_header_forwarded_on_resume(self):
+        """Authorization header from parent state is forwarded during resume (Phase 2)."""
+        tool = _make_tool()
+        response_task = _make_task(TaskState.completed, text="resumed ok")
+        captured_contexts: list = []
+
+        async def capture(*, request, context=None, **kw):
+            captured_contexts.append(context)
+            yield (response_task, None)
+
+        p, _ = _patch_client(tool, capture)
+        try:
+            ctx = _approval_ctx(confirmed=True, payload=_RESUME_PAYLOAD)
+            ctx.state["headers"] = {"authorization": "Bearer resume-token"}
+            await tool.run_async(args={}, tool_context=ctx)
+        finally:
+            p.stop()
+
+        assert captured_contexts[0].state["authorization"] == "Bearer resume-token"
 
     async def test_missing_task_id_returns_error(self):
         """Resume without task_id in payload returns an error string."""
