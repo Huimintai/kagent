@@ -3,6 +3,9 @@ kind: Agent
 metadata:
   name: argo-rollouts-conversion-agent
   namespace: {{ include "kagent.namespace" . }}
+  annotations:
+    kagent.dev/user-id: "admin@kagent.dev"
+    kagent.dev/private-mode: "false"
   labels:
     {{- include "kagent.labels" . | nindent 4 }}
 spec:
