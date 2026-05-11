@@ -7,7 +7,6 @@ package dbgen
 import (
 	"time"
 
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/kagent-dev/kagent/go/api/adk"
 	"github.com/kagent-dev/kagent/go/api/database"
 	pgvector_go "github.com/pgvector/pgvector-go"
@@ -30,8 +29,8 @@ type AgentComment struct {
 	AgentID   string
 	UserID    string
 	Content   string
-	CreatedAt pgtype.Timestamptz
-	DeletedAt pgtype.Timestamptz
+	CreatedAt *time.Time
+	DeletedAt *time.Time
 }
 
 type CrewaiAgentMemory struct {

@@ -16,7 +16,7 @@ type Querier interface {
 	DeleteExpiredMemories(ctx context.Context) error
 	ExtendMemoryTTL(ctx context.Context) error
 	GetAgent(ctx context.Context, id string) (Agent, error)
-	// Returns top agents ranked by distinct user count with session/message counts
+	// Returns top agents ranked by session count with event/message count
 	GetAgentSessionStats(ctx context.Context, limit int32) ([]GetAgentSessionStatsRow, error)
 	GetCheckpoint(ctx context.Context, arg GetCheckpointParams) (LgCheckpoint, error)
 	GetEvent(ctx context.Context, arg GetEventParams) (Event, error)
@@ -29,7 +29,7 @@ type Querier interface {
 	GetTask(ctx context.Context, id string) (Task, error)
 	GetTool(ctx context.Context, id string) (Tool, error)
 	GetToolServer(ctx context.Context, name string) (Toolserver, error)
-	// Returns tool servers ranked by number of agents that reference their tools
+	// Returns tool servers ranked by tool count (proxy for popularity)
 	GetToolServerStats(ctx context.Context, limit int32) ([]GetToolServerStatsRow, error)
 	HardDeleteCrewAIMemory(ctx context.Context, arg HardDeleteCrewAIMemoryParams) error
 	IncrementMemoryAccessCount(ctx context.Context, dollar_1 []string) error

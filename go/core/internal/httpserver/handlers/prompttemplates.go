@@ -8,6 +8,7 @@ import (
 
 	api "github.com/kagent-dev/kagent/go/api/httpapi"
 	"github.com/kagent-dev/kagent/go/core/internal/httpserver/errors"
+	common "github.com/kagent-dev/kagent/go/core/internal/utils"
 	"github.com/kagent-dev/kagent/go/core/pkg/auth"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -51,21 +52,15 @@ func (h *PromptTemplatesHandler) HandleListPromptTemplates(w ErrorResponseWriter
 		return
 	}
 
-	byName := make(map[string]corev1.ConfigMap)
-
 	list := &corev1.ConfigMapList{}
 	if err := h.KubeClient.List(r.Context(), list, client.InNamespace(ns), client.MatchingLabels(promptLibraryLabelSelector())); err != nil {
 		w.RespondWithError(errors.NewInternalServerError("Failed to list prompt template ConfigMaps", err))
 		return
 	}
-	for i := range list.Items {
-		cm := list.Items[i]
-		byName[cm.Name] = cm
-	}
 
-	out := make([]api.PromptTemplateSummary, 0, len(byName))
-	for _, cm := range byName {
-		out = append(out, summarizePromptCM(&cm))
+	out := make([]api.PromptTemplateSummary, 0, len(list.Items))
+	for i := range list.Items {
+		out = append(out, summarizePromptCM(&list.Items[i]))
 	}
 	slices.SortFunc(out, func(a, b api.PromptTemplateSummary) int {
 		return cmp.Compare(a.Name, b.Name)
@@ -108,11 +103,7 @@ func (h *PromptTemplatesHandler) HandleGetPromptTemplate(w ErrorResponseWriter, 
 		return
 	}
 
-	detail := api.PromptTemplateDetail{
-		Namespace: cm.Namespace,
-		Name:      cm.Name,
-		Data:      cloneStringMap(cm.Data),
-	}
+	detail := detailFromPromptCM(cm)
 	log.Info("Retrieved prompt template library")
 	RespondWithJSON(w, http.StatusOK, api.NewResponse(detail, "Successfully retrieved prompt template library", false))
 }
@@ -122,6 +113,12 @@ func (h *PromptTemplatesHandler) HandleCreatePromptTemplate(w ErrorResponseWrite
 	log := ctrllog.FromContext(r.Context()).WithName("prompttemplates-handler").WithValues("operation", "create")
 	if err := Check(h.Authorizer, r, auth.Resource{Type: "PromptTemplate"}); err != nil {
 		w.RespondWithError(err)
+		return
+	}
+
+	userID, err := GetUserID(r)
+	if err != nil {
+		w.RespondWithError(errors.NewBadRequestError("Failed to get user ID", err))
 		return
 	}
 
@@ -140,6 +137,9 @@ func (h *PromptTemplatesHandler) HandleCreatePromptTemplate(w ErrorResponseWrite
 			Namespace: req.Namespace,
 			Name:      req.Name,
 			Labels:    promptLibraryLabelSelector(),
+			Annotations: map[string]string{
+				common.AgentUserIDAnnotation: userID,
+			},
 		},
 		Data: cloneStringMap(req.Data),
 	}
@@ -154,11 +154,7 @@ func (h *PromptTemplatesHandler) HandleCreatePromptTemplate(w ErrorResponseWrite
 	}
 
 	log.Info("Created prompt template library", "namespace", req.Namespace, "name", req.Name)
-	detail := api.PromptTemplateDetail{
-		Namespace: cm.Namespace,
-		Name:      cm.Name,
-		Data:      cloneStringMap(cm.Data),
-	}
+	detail := detailFromPromptCM(cm)
 	RespondWithJSON(w, http.StatusCreated, api.NewResponse(detail, "Successfully created prompt template library", false))
 }
 
@@ -178,6 +174,12 @@ func (h *PromptTemplatesHandler) HandleUpdatePromptTemplate(w ErrorResponseWrite
 
 	if err := Check(h.Authorizer, r, auth.Resource{Type: "PromptTemplate", Name: namespace + "/" + name}); err != nil {
 		w.RespondWithError(err)
+		return
+	}
+
+	userID, err := GetUserID(r)
+	if err != nil {
+		w.RespondWithError(errors.NewBadRequestError("Failed to get user ID", err))
 		return
 	}
 
@@ -201,18 +203,32 @@ func (h *PromptTemplatesHandler) HandleUpdatePromptTemplate(w ErrorResponseWrite
 		return
 	}
 
+	ownerID := ""
+	if ann := cm.GetAnnotations(); ann != nil {
+		ownerID = ann[common.AgentUserIDAnnotation]
+	}
+	if ownerID != "" && ownerID != userID {
+		w.RespondWithError(errors.NewForbiddenError("Not authorized to update this prompt template", nil))
+		return
+	}
+
 	cm.Data = cloneStringMap(req.Data)
+
+	// Preserve the owner user-id.
+	annotations := cm.GetAnnotations()
+	if annotations == nil {
+		annotations = make(map[string]string)
+	}
+	annotations[common.AgentUserIDAnnotation] = userID
+	cm.SetAnnotations(annotations)
+
 	if err := h.KubeClient.Update(r.Context(), cm); err != nil {
 		w.RespondWithError(errors.NewInternalServerError("Failed to update ConfigMap", err))
 		return
 	}
 
 	log.Info("Updated prompt template library", "namespace", namespace, "name", name)
-	detail := api.PromptTemplateDetail{
-		Namespace: cm.Namespace,
-		Name:      cm.Name,
-		Data:      cloneStringMap(cm.Data),
-	}
+	detail := detailFromPromptCM(cm)
 	RespondWithJSON(w, http.StatusOK, api.NewResponse(detail, "Successfully updated prompt template library", false))
 }
 
@@ -235,6 +251,12 @@ func (h *PromptTemplatesHandler) HandleDeletePromptTemplate(w ErrorResponseWrite
 		return
 	}
 
+	userID, err := GetUserID(r)
+	if err != nil {
+		w.RespondWithError(errors.NewBadRequestError("Failed to get user ID", err))
+		return
+	}
+
 	cm := &corev1.ConfigMap{}
 	if err := h.KubeClient.Get(r.Context(), client.ObjectKey{Namespace: namespace, Name: name}, cm); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -242,6 +264,15 @@ func (h *PromptTemplatesHandler) HandleDeletePromptTemplate(w ErrorResponseWrite
 			return
 		}
 		w.RespondWithError(errors.NewInternalServerError("Failed to get ConfigMap", err))
+		return
+	}
+
+	ownerID := ""
+	if ann := cm.GetAnnotations(); ann != nil {
+		ownerID = ann[common.AgentUserIDAnnotation]
+	}
+	if ownerID != "" && ownerID != userID {
+		w.RespondWithError(errors.NewForbiddenError("Not authorized to delete this prompt template", nil))
 		return
 	}
 
@@ -264,11 +295,35 @@ func summarizePromptCM(cm *corev1.ConfigMap) api.PromptTemplateSummary {
 		keys = append(keys, k)
 	}
 	slices.Sort(keys)
+
+	userID := ""
+	if ann := cm.GetAnnotations(); ann != nil {
+		if uid, ok := ann[common.AgentUserIDAnnotation]; ok {
+			userID = uid
+		}
+	}
+
 	return api.PromptTemplateSummary{
 		Namespace: cm.Namespace,
 		Name:      cm.Name,
 		KeyCount:  keyCount,
 		Keys:      keys,
+		UserID:    userID,
+	}
+}
+
+func detailFromPromptCM(cm *corev1.ConfigMap) api.PromptTemplateDetail {
+	userID := ""
+	if ann := cm.GetAnnotations(); ann != nil {
+		if uid, ok := ann[common.AgentUserIDAnnotation]; ok {
+			userID = uid
+		}
+	}
+	return api.PromptTemplateDetail{
+		Namespace: cm.Namespace,
+		Name:      cm.Name,
+		Data:      cloneStringMap(cm.Data),
+		UserID:    userID,
 	}
 }
 
