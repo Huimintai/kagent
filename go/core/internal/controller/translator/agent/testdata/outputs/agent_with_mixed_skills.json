@@ -12,15 +12,15 @@
       "text"
     ],
     "description": "",
-    "name": "git_skills_agent",
+    "name": "mixed_skills_agent",
     "preferredTransport": "JSONRPC",
     "skills": null,
-    "url": "http://git-skills-agent.test:8080",
+    "url": "http://mixed-skills-agent.test:8080",
     "version": ""
   },
   "config": {
     "description": "",
-    "instruction": "You are a helpful assistant with skills from git.",
+    "instruction": "You are a helpful assistant.",
     "model": {
       "base_url": "",
       "headers": {
@@ -43,11 +43,11 @@
         "labels": {
           "app": "kagent",
           "app.kubernetes.io/managed-by": "kagent",
-          "app.kubernetes.io/name": "git-skills-agent",
+          "app.kubernetes.io/name": "mixed-skills-agent",
           "app.kubernetes.io/part-of": "kagent",
-          "kagent": "git-skills-agent"
+          "kagent": "mixed-skills-agent"
         },
-        "name": "git-skills-agent",
+        "name": "mixed-skills-agent",
         "namespace": "test",
         "ownerReferences": [
           {
@@ -55,15 +55,41 @@
             "blockOwnerDeletion": true,
             "controller": true,
             "kind": "Agent",
-            "name": "git-skills-agent",
+            "name": "mixed-skills-agent",
             "uid": ""
           }
         ]
       },
       "stringData": {
-        "agent-card.json": "{\"name\":\"git_skills_agent\",\"description\":\"\",\"url\":\"http://git-skills-agent.test:8080\",\"version\":\"\",\"capabilities\":{\"streaming\":true,\"pushNotifications\":false,\"stateTransitionHistory\":true},\"defaultInputModes\":[\"text\"],\"defaultOutputModes\":[\"text\"],\"skills\":[],\"preferredTransport\":\"JSONRPC\"}",
-        "config.json": "{\"model\":{\"type\":\"openai\",\"model\":\"gpt-4o\",\"headers\":{\"User-Agent\":\"kagent/1.0\"},\"base_url\":\"\",\"max_tokens\":1024,\"reasoning_effort\":\"low\",\"temperature\":0.7,\"top_p\":0.95},\"description\":\"\",\"instruction\":\"You are a helpful assistant with skills from git.\",\"stream\":false}",
+        "agent-card.json": "{\"name\":\"mixed_skills_agent\",\"description\":\"\",\"url\":\"http://mixed-skills-agent.test:8080\",\"version\":\"\",\"capabilities\":{\"streaming\":true,\"pushNotifications\":false,\"stateTransitionHistory\":true},\"defaultInputModes\":[\"text\"],\"defaultOutputModes\":[\"text\"],\"skills\":[],\"preferredTransport\":\"JSONRPC\"}",
+        "config.json": "{\"model\":{\"type\":\"openai\",\"model\":\"gpt-4o\",\"headers\":{\"User-Agent\":\"kagent/1.0\"},\"base_url\":\"\",\"max_tokens\":1024,\"reasoning_effort\":\"low\",\"temperature\":0.7,\"top_p\":0.95},\"description\":\"\",\"instruction\":\"You are a helpful assistant.\",\"stream\":false}",
         "srt-settings.json": "{\"allowAllUnixSockets\":true,\"enableWeakerNestedSandbox\":true,\"filesystem\":{\"allowWrite\":[\".\",\"/tmp\"],\"denyRead\":[],\"denyWrite\":[]},\"network\":{\"allowedDomains\":[],\"deniedDomains\":[]}}"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "data": {
+        "data-analysis": "---\nname: data-analysis\ndescription: Analyze data files and produce reports\n---\n# Data Analysis Skill\nUse pandas to analyze CSV files and produce summary reports.\n",
+        "python-tools": "---\nname: python-tools\ndescription: Python data science tools with prompt guide\n---\n# Python Tools\nUse these CLI tools for data processing tasks.\n"
+      },
+      "kind": "ConfigMap",
+      "metadata": {
+        "labels": {
+          "app": "kagent",
+          "kagent": "mixed-skills-agent"
+        },
+        "name": "mixed-skills-agent-inline-skills",
+        "namespace": "test",
+        "ownerReferences": [
+          {
+            "apiVersion": "kagent.dev/v1alpha2",
+            "blockOwnerDeletion": true,
+            "controller": true,
+            "kind": "Agent",
+            "name": "mixed-skills-agent",
+            "uid": ""
+          }
+        ]
       }
     },
     {
@@ -73,11 +99,11 @@
         "labels": {
           "app": "kagent",
           "app.kubernetes.io/managed-by": "kagent",
-          "app.kubernetes.io/name": "git-skills-agent",
+          "app.kubernetes.io/name": "mixed-skills-agent",
           "app.kubernetes.io/part-of": "kagent",
-          "kagent": "git-skills-agent"
+          "kagent": "mixed-skills-agent"
         },
-        "name": "git-skills-agent",
+        "name": "mixed-skills-agent",
         "namespace": "test",
         "ownerReferences": [
           {
@@ -85,7 +111,7 @@
             "blockOwnerDeletion": true,
             "controller": true,
             "kind": "Agent",
-            "name": "git-skills-agent",
+            "name": "mixed-skills-agent",
             "uid": ""
           }
         ]
@@ -98,11 +124,11 @@
         "labels": {
           "app": "kagent",
           "app.kubernetes.io/managed-by": "kagent",
-          "app.kubernetes.io/name": "git-skills-agent",
+          "app.kubernetes.io/name": "mixed-skills-agent",
           "app.kubernetes.io/part-of": "kagent",
-          "kagent": "git-skills-agent"
+          "kagent": "mixed-skills-agent"
         },
-        "name": "git-skills-agent",
+        "name": "mixed-skills-agent",
         "namespace": "test",
         "ownerReferences": [
           {
@@ -110,7 +136,7 @@
             "blockOwnerDeletion": true,
             "controller": true,
             "kind": "Agent",
-            "name": "git-skills-agent",
+            "name": "mixed-skills-agent",
             "uid": ""
           }
         ]
@@ -119,7 +145,7 @@
         "selector": {
           "matchLabels": {
             "app": "kagent",
-            "kagent": "git-skills-agent"
+            "kagent": "mixed-skills-agent"
           }
         },
         "strategy": {
@@ -132,14 +158,14 @@
         "template": {
           "metadata": {
             "annotations": {
-              "kagent.dev/config-hash": "16217869995407106395"
+              "kagent.dev/config-hash": "4298692322798485270"
             },
             "labels": {
               "app": "kagent",
               "app.kubernetes.io/managed-by": "kagent",
-              "app.kubernetes.io/name": "git-skills-agent",
+              "app.kubernetes.io/name": "mixed-skills-agent",
               "app.kubernetes.io/part-of": "kagent",
-              "kagent": "git-skills-agent"
+              "kagent": "mixed-skills-agent"
             }
           },
           "spec": {
@@ -173,7 +199,7 @@
                   },
                   {
                     "name": "KAGENT_NAME",
-                    "value": "git-skills-agent"
+                    "value": "mixed-skills-agent"
                   },
                   {
                     "name": "KAGENT_URL",
@@ -208,12 +234,12 @@
                 },
                 "resources": {
                   "limits": {
-                    "cpu": "2",
-                    "memory": "1Gi"
+                    "cpu": "3",
+                    "memory": "2Gi"
                   },
                   "requests": {
-                    "cpu": "100m",
-                    "memory": "384Mi"
+                    "cpu": "200m",
+                    "memory": "684Mi"
                   }
                 },
                 "securityContext": {
@@ -226,8 +252,19 @@
                   },
                   {
                     "mountPath": "/skills",
-                    "name": "kagent-skills",
-                    "readOnly": true
+                    "name": "kagent-skills"
+                  },
+                  {
+                    "mountPath": "/skills/data-analysis/SKILL.md",
+                    "name": "inline-skills",
+                    "readOnly": true,
+                    "subPath": "data-analysis"
+                  },
+                  {
+                    "mountPath": "/skills/python-tools/SKILL.md",
+                    "name": "inline-skills",
+                    "readOnly": true,
+                    "subPath": "python-tools"
                   },
                   {
                     "mountPath": "/var/run/secrets/tokens",
@@ -241,7 +278,7 @@
                 "command": [
                   "/bin/sh",
                   "-c",
-                  "set -e\n_auth_mount=\"$(cat \u003c\u003c'ENDVAL'\n/git-auth\nENDVAL\n)\"\nif [ -f \"${_auth_mount}/ssh-privatekey\" ]; then\n  mkdir -p ~/.ssh\n  chmod 700 ~/.ssh\n  cp \"${_auth_mount}/ssh-privatekey\" ~/.ssh/id_rsa\n  chmod 600 ~/.ssh/id_rsa\n  touch ~/.ssh/known_hosts\n  chmod 600 ~/.ssh/known_hosts\nelif [ -f \"${_auth_mount}/token\" ]; then\n  git config --global credential.helper \"!f() { echo username=x-access-token; echo password=\\$(cat ${_auth_mount}/token); }; f\"\nfi\n_url=\"$(cat \u003c\u003c'ENDVAL'\nhttps://github.com/org/my-skills\nENDVAL\n)\"\n_ref=\"$(cat \u003c\u003c'ENDVAL'\nv2.0.0\nENDVAL\n)\"\n_dest=\"$(cat \u003c\u003c'ENDVAL'\n/skills/k8s-skill\nENDVAL\n)\"\nrm -rf \"$_dest\"\necho \"Cloning ${_url} (ref ${_ref}) into ${_dest}\"\ngit clone --depth 1 --branch \"$_ref\" -- \"$_url\" \"$_dest\"\n_subpath=\"$(cat \u003c\u003c'ENDVAL'\nskills/k8s\nENDVAL\n)\"\n_tmp=\"$(mktemp -d)\"\ncp -rL \"${_dest}/${_subpath}/.\" \"$_tmp/\"\nrm -rf \"$_dest\"\nmv \"$_tmp\" \"$_dest\"\n_url=\"$(cat \u003c\u003c'ENDVAL'\nhttps://github.com/org/another-skill\nENDVAL\n)\"\n_ref=\"$(cat \u003c\u003c'ENDVAL'\nabc123def456abc123def456abc123def456abc1\nENDVAL\n)\"\n_dest=\"$(cat \u003c\u003c'ENDVAL'\n/skills/another-skill\nENDVAL\n)\"\nrm -rf \"$_dest\"\necho \"Cloning ${_url} (commit ${_ref}) into ${_dest}\"\ngit clone -- \"$_url\" \"$_dest\"\ncd \"$_dest\" \u0026\u0026 git checkout \"$_ref\"\n_url=\"$(cat \u003c\u003c'ENDVAL'\nhttps://github.com/org/private-skill\nENDVAL\n)\"\n_ref=\"$(cat \u003c\u003c'ENDVAL'\nmain\nENDVAL\n)\"\n_dest=\"$(cat \u003c\u003c'ENDVAL'\n/skills/private-skill\nENDVAL\n)\"\nrm -rf \"$_dest\"\necho \"Cloning ${_url} (ref ${_ref}) into ${_dest}\"\ngit clone --depth 1 --branch \"$_ref\" -- \"$_url\" \"$_dest\"\n_image=\"$(cat \u003c\u003c'ENDVAL'\nghcr.io/org/oci-skill:v1.0\nENDVAL\n)\"\n_dest=\"$(cat \u003c\u003c'ENDVAL'\n/skills/oci-skill\nENDVAL\n)\"\necho \"Exporting OCI image ${_image} into ${_dest}\"\n_uname=\"$(uname -m)\"\ncase \"$_uname\" in\n  x86_64|amd64)\n    _arch=\"amd64\"\n    ;;\n  aarch64|arm64)\n    _arch=\"arm64\"\n    ;;\n  *)\n    echo \"Unsupported architecture for OCI export: ${_uname}\" \u003e\u00262\n    exit 1\n    ;;\nesac\nkrane export --platform \"linux/${_arch}\" \"$_image\" '/tmp/oci-skill.tar'\nmkdir -p \"$_dest\"\ntar xf '/tmp/oci-skill.tar' -C \"$_dest\"\nrm -f '/tmp/oci-skill.tar'\n"
+                  "set -e\n_image=\"$(cat \u003c\u003c'ENDVAL'\nfoo:latest\nENDVAL\n)\"\n_dest=\"$(cat \u003c\u003c'ENDVAL'\n/skills/foo\nENDVAL\n)\"\necho \"Exporting OCI image ${_image} into ${_dest}\"\n_uname=\"$(uname -m)\"\ncase \"$_uname\" in\n  x86_64|amd64)\n    _arch=\"amd64\"\n    ;;\n  aarch64|arm64)\n    _arch=\"arm64\"\n    ;;\n  *)\n    echo \"Unsupported architecture for OCI export: ${_uname}\" \u003e\u00262\n    exit 1\n    ;;\nesac\nkrane export --platform \"linux/${_arch}\" \"$_image\" '/tmp/oci-skill.tar'\nmkdir -p \"$_dest\"\ntar xf '/tmp/oci-skill.tar' -C \"$_dest\"\nrm -f '/tmp/oci-skill.tar'\n"
                 ],
                 "image": "cr.kagent.dev/kagent-dev/kagent/skills-init:dev",
                 "name": "skills-init",
@@ -259,21 +296,16 @@
                   {
                     "mountPath": "/skills",
                     "name": "kagent-skills"
-                  },
-                  {
-                    "mountPath": "/git-auth",
-                    "name": "git-auth",
-                    "readOnly": true
                   }
                 ]
               }
             ],
-            "serviceAccountName": "git-skills-agent",
+            "serviceAccountName": "mixed-skills-agent",
             "volumes": [
               {
                 "name": "config",
                 "secret": {
-                  "secretName": "git-skills-agent"
+                  "secretName": "mixed-skills-agent"
                 }
               },
               {
@@ -281,10 +313,10 @@
                 "name": "kagent-skills"
               },
               {
-                "name": "git-auth",
-                "secret": {
-                  "secretName": "github-token"
-                }
+                "configMap": {
+                  "name": "mixed-skills-agent-inline-skills"
+                },
+                "name": "inline-skills"
               },
               {
                 "name": "kagent-token",
@@ -313,11 +345,11 @@
         "labels": {
           "app": "kagent",
           "app.kubernetes.io/managed-by": "kagent",
-          "app.kubernetes.io/name": "git-skills-agent",
+          "app.kubernetes.io/name": "mixed-skills-agent",
           "app.kubernetes.io/part-of": "kagent",
-          "kagent": "git-skills-agent"
+          "kagent": "mixed-skills-agent"
         },
-        "name": "git-skills-agent",
+        "name": "mixed-skills-agent",
         "namespace": "test",
         "ownerReferences": [
           {
@@ -325,7 +357,7 @@
             "blockOwnerDeletion": true,
             "controller": true,
             "kind": "Agent",
-            "name": "git-skills-agent",
+            "name": "mixed-skills-agent",
             "uid": ""
           }
         ]
@@ -340,7 +372,7 @@
         ],
         "selector": {
           "app": "kagent",
-          "kagent": "git-skills-agent"
+          "kagent": "mixed-skills-agent"
         },
         "type": "ClusterIP"
       },
