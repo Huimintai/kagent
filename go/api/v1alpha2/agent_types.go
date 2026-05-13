@@ -40,12 +40,14 @@ const (
 )
 
 // DeclarativeRuntime represents the runtime implementation for declarative agents
-// +kubebuilder:validation:Enum=python;go
+// +kubebuilder:validation:Enum=python;go;claudeCode;codex
 type DeclarativeRuntime string
 
 const (
-	DeclarativeRuntime_Python DeclarativeRuntime = "python"
-	DeclarativeRuntime_Go     DeclarativeRuntime = "go"
+	DeclarativeRuntime_Python    DeclarativeRuntime = "python"
+	DeclarativeRuntime_Go        DeclarativeRuntime = "go"
+	DeclarativeRuntime_ClaudeCode DeclarativeRuntime = "claudeCode"
+	DeclarativeRuntime_Codex     DeclarativeRuntime = "codex"
 )
 
 // AgentSpec defines the desired state of Agent.
@@ -234,6 +236,16 @@ type DeclarativeAgentSpec struct {
 	// +optional
 	// +kubebuilder:validation:MaxItems=20
 	InlineSkills []InlineSkill `json:"inlineSkills,omitempty"`
+
+	// ClaudeCodeConfig holds configuration for the Claude Code CLI runtime.
+	// Only used when Runtime is "claudeCode".
+	// +optional
+	ClaudeCodeConfig *ClaudeCodeRuntimeConfig `json:"claudeCodeConfig,omitempty"`
+
+	// CodexConfig holds configuration for the Codex CLI runtime.
+	// Only used when Runtime is "codex".
+	// +optional
+	CodexConfig *CodexRuntimeConfig `json:"codexConfig,omitempty"`
 }
 
 // InlineSkill defines a prompt-based skill document that is mounted as a SKILL.md
@@ -259,6 +271,55 @@ type InlineSkill struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	Content string `json:"content"`
+}
+
+// ClaudeCodeRuntimeConfig holds configuration specific to the Claude Code CLI runtime.
+type ClaudeCodeRuntimeConfig struct {
+	// Model is the model identifier for Claude Code.
+	Model string `json:"model"`
+	// SystemPrompt is the system prompt for the Claude Code session.
+	// +optional
+	SystemPrompt string `json:"systemPrompt,omitempty"`
+	// Skills is a list of skill names to load.
+	// +optional
+	Skills []string `json:"skills,omitempty"`
+	// MaxTurns limits the number of agentic turns.
+	// +optional
+	MaxTurns *int32 `json:"maxTurns,omitempty"`
+	// AllowedTools restricts which tools Claude Code may invoke.
+	// +optional
+	AllowedTools []string `json:"allowedTools,omitempty"`
+	// ModelConfig is the name of the ModelConfig resource to use.
+	// +optional
+	ModelConfig string `json:"modelConfig,omitempty"`
+	// BaseUrl is the base URL for the API endpoint.
+	// +optional
+	BaseUrl string `json:"baseUrl,omitempty"`
+	// ApiKeySecret is a reference to the secret containing the API key.
+	// +optional
+	ApiKeySecret string `json:"apiKeySecret,omitempty"`
+}
+
+// CodexRuntimeConfig holds configuration specific to the Codex CLI runtime.
+type CodexRuntimeConfig struct {
+	// Model is the model identifier for Codex.
+	Model string `json:"model"`
+	// SystemPrompt is the system prompt for the Codex session.
+	// +optional
+	SystemPrompt string `json:"systemPrompt,omitempty"`
+	// Sandbox specifies the sandbox mode for Codex execution.
+	// +kubebuilder:validation:Enum=docker;firecracker;none
+	// +optional
+	Sandbox string `json:"sandbox,omitempty"`
+	// ModelConfig is the name of the ModelConfig resource to use.
+	// +optional
+	ModelConfig string `json:"modelConfig,omitempty"`
+	// BaseUrl is the base URL for the API endpoint.
+	// +optional
+	BaseUrl string `json:"baseUrl,omitempty"`
+	// ApiKeySecret is a reference to the secret containing the API key.
+	// +optional
+	ApiKeySecret string `json:"apiKeySecret,omitempty"`
 }
 
 // SandboxConfig configures sandboxed execution behavior.

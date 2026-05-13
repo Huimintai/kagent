@@ -14,6 +14,7 @@ import (
 	"github.com/kagent-dev/kagent/go/adk/pkg/a2a"
 	"github.com/kagent-dev/kagent/go/adk/pkg/app"
 	"github.com/kagent-dev/kagent/go/adk/pkg/auth"
+	"github.com/kagent-dev/kagent/go/adk/pkg/cli"
 	"github.com/kagent-dev/kagent/go/adk/pkg/config"
 	kagentmemory "github.com/kagent-dev/kagent/go/adk/pkg/memory"
 	runnerpkg "github.com/kagent-dev/kagent/go/adk/pkg/runner"
@@ -154,6 +155,55 @@ func main() {
 	}
 
 	ctx := logr.NewContext(context.Background(), logger)
+
+	// Check if we should run as a CLI runtime (Claude Code or Codex).
+	cliRuntime := cli.DetectRuntime()
+	if cliRuntime != "" {
+		logger.Info("CLI runtime detected, using CLI executor", "runtime", cliRuntime)
+
+		cliExecutor := cli.NewExecutor(cli.Config{
+			Runtime:        cliRuntime,
+			Instruction:    agentConfig.Instruction,
+			SessionService: sessionService,
+			AppName:        appName,
+			Logger:         logger,
+		})
+
+		// Build the agent card for CLI mode.
+		cardName, cardDesc := cli.CLIRuntimeInfo(cliRuntime)
+		if agentCard == nil {
+			agentCard = &a2atype.AgentCard{
+				Name:        cardName,
+				Description: cardDesc,
+				Version:     "0.2.0",
+			}
+		}
+		agentCard.Capabilities = a2atype.AgentCapabilities{
+			Streaming:              true,
+			StateTransitionHistory: true,
+		}
+
+		kagentApp, err := app.New(app.AppConfig{
+			AgentCard:       *agentCard,
+			Host:            *host,
+			Port:            port,
+			KAgentURL:       kagentURL,
+			AppName:         appName,
+			ShutdownTimeout: 5 * time.Second,
+			Logger:          logger,
+			HTTPClient:      httpClient,
+		}, cliExecutor)
+		if err != nil {
+			logger.Error(err, "Failed to create app for CLI runtime")
+			os.Exit(1)
+		}
+
+		if err := kagentApp.Run(); err != nil {
+			logger.Error(err, "Server error")
+			os.Exit(1)
+		}
+		return
+	}
 
 	// Build memory service if configured.
 	var memoryService *kagentmemory.KagentMemoryService
