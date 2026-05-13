@@ -116,7 +116,7 @@ func (b *ClawBackend) OnAgentHarnessReady(ctx context.Context, ah *v1alpha2.Agen
 	}
 
 	gatewayScript := fmt.Sprintf(
-		`openclaw gateway run --port %d >>/tmp/openclaw-gateway.log 2>&1 &`,
+		`openclaw gateway run --port %d --bind loopback >>/tmp/openclaw-gateway.log 2>&1 &`,
 		gwPort,
 	)
 	gatewayCmd := []string{"sh", "-c", gatewayScript}
