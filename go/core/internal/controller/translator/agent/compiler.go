@@ -8,6 +8,8 @@ import (
 	"github.com/kagent-dev/kagent/go/api/adk"
 	"github.com/kagent-dev/kagent/go/api/v1alpha2"
 	"github.com/kagent-dev/kagent/go/core/internal/utils"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"trpc.group/trpc-go/trpc-a2a-go/server"
 )
 
@@ -80,6 +82,11 @@ func (a *adkApiTranslator) CompileAgent(
 		}
 		dep, err = resolveInlineDeployment(agent, mdd)
 		if err != nil {
+			return nil, err
+		}
+
+		// Auto-inject AI Core proxy sidecar when CLI runtimes reference a ModelConfig.
+		if err := a.injectAICoreProxySidecar(ctx, agent, dep); err != nil {
 			return nil, err
 		}
 
@@ -157,9 +164,26 @@ func (a *adkApiTranslator) validateAgent(ctx context.Context, agent v1alpha2.Age
 
 func (a *adkApiTranslator) translateInlineAgent(ctx context.Context, agent v1alpha2.AgentObject) (*adk.AgentConfig, *modelDeploymentData, []byte, error) {
 	spec := agent.GetAgentSpec()
-	model, mdd, secretHashBytes, err := a.translateModel(ctx, agent.GetNamespace(), spec.Declarative.ModelConfig)
-	if err != nil {
-		return nil, nil, nil, err
+
+	// Determine the effective runtime
+	runtime := spec.Declarative.Runtime
+	if runtime == "" {
+		runtime = v1alpha2.DeclarativeRuntime_Python
+	}
+
+	// ClaudeCode and Codex runtimes manage their own model configuration via claudeCodeConfig/codexConfig
+	// and do not require a ModelConfig resource.
+	var model adk.Model
+	var mdd *modelDeploymentData
+	var secretHashBytes []byte
+	if runtime == v1alpha2.DeclarativeRuntime_ClaudeCode || runtime == v1alpha2.DeclarativeRuntime_Codex {
+		mdd = &modelDeploymentData{}
+	} else {
+		var err error
+		model, mdd, secretHashBytes, err = a.translateModel(ctx, agent.GetNamespace(), spec.Declarative.ModelConfig)
+		if err != nil {
+			return nil, nil, nil, err
+		}
 	}
 
 	// Resolve the raw system message (template processing happens after tools are translated).
@@ -325,4 +349,167 @@ func (a *adkApiTranslator) resolveRawSystemMessage(ctx context.Context, agent v1
 		return spec.Declarative.SystemMessage, nil
 	}
 	return "", fmt.Errorf("at least one system message source (SystemMessage or SystemMessageFrom) must be specified")
+}
+
+// PlatformConfigMapName is the well-known ConfigMap name for platform-level defaults.
+const PlatformConfigMapName = "kagent-platform-config"
+
+// Platform ConfigMap keys for default ModelConfig references.
+const (
+	PlatformKeyAnthropicModelConfig = "default-anthropic-model-config"
+	PlatformKeyOpenAIModelConfig    = "default-openai-model-config"
+)
+
+// injectAICoreProxySidecar checks if a CLI runtime (ClaudeCode/Codex) references a ModelConfig
+// of provider SAPAICore. If so, it auto-injects a proxy sidecar container and sets the
+// appropriate base URL environment variables so the CLI routes traffic through the proxy.
+//
+// When a CLI runtime does not explicitly set a ModelConfig, the controller falls back to
+// the kagent-platform-config ConfigMap in the agent's namespace to find the default.
+func (a *adkApiTranslator) injectAICoreProxySidecar(ctx context.Context, agent v1alpha2.AgentObject, dep *resolvedDeployment) error {
+	spec := agent.GetAgentSpec()
+	if spec.Declarative == nil {
+		return nil
+	}
+
+	runtime := spec.Declarative.Runtime
+	var modelConfigName string
+	var provider string // "anthropic" or "openai"
+
+	switch runtime {
+	case v1alpha2.DeclarativeRuntime_ClaudeCode:
+		provider = "anthropic"
+		if spec.Declarative.ClaudeCodeConfig != nil && spec.Declarative.ClaudeCodeConfig.ModelConfig != "" {
+			modelConfigName = spec.Declarative.ClaudeCodeConfig.ModelConfig
+		}
+	case v1alpha2.DeclarativeRuntime_Codex:
+		provider = "openai"
+		if spec.Declarative.CodexConfig != nil && spec.Declarative.CodexConfig.ModelConfig != "" {
+			modelConfigName = spec.Declarative.CodexConfig.ModelConfig
+		}
+	default:
+		return nil
+	}
+
+	// Fallback: read default ModelConfig from platform ConfigMap.
+	if modelConfigName == "" {
+		platformKey := PlatformKeyAnthropicModelConfig
+		if provider == "openai" {
+			platformKey = PlatformKeyOpenAIModelConfig
+		}
+		defaultMC, err := utils.GetConfigMapValue(ctx, a.kube, types.NamespacedName{
+			Namespace: agent.GetNamespace(),
+			Name:      PlatformConfigMapName,
+		}, platformKey)
+		if err != nil || defaultMC == "" {
+			// No platform config or key not found — skip sidecar injection silently.
+			return nil
+		}
+		modelConfigName = defaultMC
+	}
+
+	// Look up the ModelConfig resource
+	mc := &v1alpha2.ModelConfig{}
+	if err := a.kube.Get(ctx, types.NamespacedName{
+		Namespace: agent.GetNamespace(),
+		Name:      modelConfigName,
+	}, mc); err != nil {
+		return fmt.Errorf("failed to get ModelConfig %q for CLI runtime proxy: %w", modelConfigName, err)
+	}
+
+	// Only inject proxy for SAPAICore provider
+	if mc.Spec.Provider != v1alpha2.ModelProviderSAPAICore {
+		return nil
+	}
+
+	if mc.Spec.SAPAICore == nil {
+		return fmt.Errorf("ModelConfig %q has provider SAPAICore but missing sapAICore config", modelConfigName)
+	}
+
+	// Build the proxy sidecar image reference using the same registry/tag as the main image
+	proxyImage := getAICoreProxyImage()
+
+	// Build sidecar container
+	sidecar := corev1.Container{
+		Name:            "aicore-proxy",
+		Image:           proxyImage,
+		ImagePullPolicy: corev1.PullAlways,
+		Env: []corev1.EnvVar{
+			{Name: "AICORE_PROXY_PROVIDER", Value: provider},
+			{Name: "AICORE_PROXY_PORT", Value: "9090"},
+			{Name: "SAP_AI_CORE_BASE_URL", Value: mc.Spec.SAPAICore.BaseURL},
+			{Name: "SAP_AI_CORE_AUTH_URL", Value: mc.Spec.SAPAICore.AuthURL},
+			{Name: "SAP_AI_CORE_RESOURCE_GROUP", Value: mc.Spec.SAPAICore.ResourceGroup},
+			{Name: "SAP_AI_CORE_MODEL", Value: mc.Spec.Model},
+		},
+		Ports: []corev1.ContainerPort{{
+			Name:          "proxy",
+			ContainerPort: 9090,
+		}},
+	}
+
+	// Inject credentials from the ModelConfig's apiKeySecret
+	if mc.Spec.APIKeySecret != "" {
+		sidecar.Env = append(sidecar.Env,
+			corev1.EnvVar{
+				Name: "SAP_AI_CORE_CLIENT_ID",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{Name: mc.Spec.APIKeySecret},
+						Key:                  "client_id",
+					},
+				},
+			},
+			corev1.EnvVar{
+				Name: "SAP_AI_CORE_CLIENT_SECRET",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{Name: mc.Spec.APIKeySecret},
+						Key:                  "client_secret",
+					},
+				},
+			},
+		)
+	}
+
+	// Add sidecar to deployment
+	dep.ExtraContainers = append(dep.ExtraContainers, sidecar)
+
+	// Set base URL and placeholder API key on the main container
+	switch provider {
+	case "anthropic":
+		dep.Env = append(dep.Env,
+			corev1.EnvVar{Name: "ANTHROPIC_BASE_URL", Value: "http://localhost:9090"},
+			corev1.EnvVar{Name: "ANTHROPIC_API_KEY", Value: "sk-placeholder"},
+		)
+	case "openai":
+		dep.Env = append(dep.Env,
+			corev1.EnvVar{Name: "OPENAI_BASE_URL", Value: "http://localhost:9090"},
+			corev1.EnvVar{Name: "OPENAI_API_KEY", Value: "sk-placeholder"},
+		)
+	}
+
+	return nil
+}
+
+// getAICoreProxyImage returns the fully qualified image reference for the aicore-proxy sidecar.
+func getAICoreProxyImage() string {
+	registry := DefaultImageConfig.Registry
+	repo := DefaultImageConfig.Repository
+	tag := DefaultImageConfig.Tag
+	// Derive base path from repository (e.g., "kagent-dev/kagent/app" -> "kagent-dev/kagent")
+	repoBase := repo
+	if idx := lastIndexByte(repo, '/'); idx != -1 {
+		repoBase = repo[:idx]
+	}
+	return fmt.Sprintf("%s/%s/aicore-proxy:%s", registry, repoBase, tag)
+}
+
+func lastIndexByte(s string, c byte) int {
+	for i := len(s) - 1; i >= 0; i-- {
+		if s[i] == c {
+			return i
+		}
+	}
+	return -1
 }
