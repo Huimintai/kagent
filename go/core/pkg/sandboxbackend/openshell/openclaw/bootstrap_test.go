@@ -56,6 +56,78 @@ func TestBuildBootstrapJSON_OpenAIDefaultBaseURLInferenceLocal(t *testing.T) {
 	require.Contains(t, kagent["allowlist"], "OPENAI_API_KEY")
 }
 
+func TestBuildBootstrapJSON_HTTPBaseURL_InjectsNoProxy(t *testing.T) {
+	scheme := runtime.NewScheme()
+	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
+	utilruntime.Must(v1alpha2.AddToScheme(scheme))
+
+	ns := "default"
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "proxy-key", Namespace: ns},
+		Data:       map[string][]byte{"OPENAI_API_KEY": []byte("not-needed")},
+	}
+	mc := &v1alpha2.ModelConfig{
+		ObjectMeta: metav1.ObjectMeta{Name: "mc-proxy", Namespace: ns},
+		Spec: v1alpha2.ModelConfigSpec{
+			Model:           "my-model",
+			Provider:        v1alpha2.ModelProviderOpenAI,
+			APIKeySecret:    "proxy-key",
+			APIKeySecretKey: "OPENAI_API_KEY",
+			OpenAI:          &v1alpha2.OpenAIConfig{BaseURL: "http://my-svc.ns.svc.cluster.local:8080/v1"},
+		},
+	}
+	sbx := &v1alpha2.AgentHarness{ObjectMeta: metav1.ObjectMeta{Name: "s2", Namespace: ns}}
+
+	kube := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret, mc).Build()
+	raw, env, err := openclaw.BuildBootstrapJSON(context.Background(), kube, ns, sbx, mc, 18800)
+	require.NoError(t, err)
+
+	wantNoProxy := "127.0.0.1,localhost,::1,my-svc.ns.svc.cluster.local"
+	require.Equal(t, wantNoProxy, env["no_proxy"], "no_proxy must include cluster host")
+	require.Equal(t, wantNoProxy, env["NO_PROXY"], "NO_PROXY must include cluster host")
+
+	// no_proxy/NO_PROXY must not appear in the secrets allowlist (openclaw rejects lowercase keys)
+	var root map[string]any
+	require.NoError(t, json.Unmarshal(raw, &root))
+	secRoot := root["secrets"].(map[string]any)
+	secProvs := secRoot["providers"].(map[string]any)
+	kagent := secProvs["kagent"].(map[string]any)
+	al := kagent["allowlist"].([]any)
+	for _, entry := range al {
+		require.NotEqual(t, "no_proxy", entry, "no_proxy must not be in secrets allowlist")
+		require.NotEqual(t, "NO_PROXY", entry, "NO_PROXY must not be in secrets allowlist")
+	}
+}
+
+func TestBuildBootstrapJSON_HTTPSBaseURL_NoProxyNotInjected(t *testing.T) {
+	scheme := runtime.NewScheme()
+	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
+	utilruntime.Must(v1alpha2.AddToScheme(scheme))
+
+	ns := "default"
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "ext-key", Namespace: ns},
+		Data:       map[string][]byte{"OPENAI_API_KEY": []byte("sk-ext")},
+	}
+	mc := &v1alpha2.ModelConfig{
+		ObjectMeta: metav1.ObjectMeta{Name: "mc-ext", Namespace: ns},
+		Spec: v1alpha2.ModelConfigSpec{
+			Model:           "gpt-4o",
+			Provider:        v1alpha2.ModelProviderOpenAI,
+			APIKeySecret:    "ext-key",
+			APIKeySecretKey: "OPENAI_API_KEY",
+			OpenAI:          &v1alpha2.OpenAIConfig{BaseURL: "https://api.openai.com/v1"},
+		},
+	}
+	sbx := &v1alpha2.AgentHarness{ObjectMeta: metav1.ObjectMeta{Name: "s3", Namespace: ns}}
+
+	kube := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret, mc).Build()
+	_, env, err := openclaw.BuildBootstrapJSON(context.Background(), kube, ns, sbx, mc, 18800)
+	require.NoError(t, err)
+	_, hasNoProxy := env["no_proxy"]
+	require.False(t, hasNoProxy, "no_proxy must not be injected for HTTPS base URLs")
+}
+
 func TestBuildBootstrapJSON_OpenAIAndTelegram(t *testing.T) {
 	scheme := runtime.NewScheme()
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
