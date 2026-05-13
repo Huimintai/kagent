@@ -23,7 +23,12 @@ type Agent struct {
 	// UserID and PrivateMode are agent access metadata stored via K8s annotations
 	// and synced to the DB agent record by the reconciler and HTTP handlers.
 	UserID      string `json:"user_id"`
-	PrivateMode bool   `json:"private_mode"`
+	PrivateMode bool   `json:"private_mode"` // Deprecated: use Visibility instead
+
+	// Visibility controls who can see this agent: "private", "shared", or "public".
+	Visibility string   `json:"visibility"`
+	// SharedWith is the list of user IDs that can see this agent when Visibility is "shared".
+	SharedWith []string `json:"shared_with"`
 }
 
 type Event struct {
@@ -80,6 +85,9 @@ type Session struct {
 	// SessionSourceUser = user-initiated, SessionSourceAgent = created by a parent agent's A2A call.
 	Source *SessionSource `json:"source,omitempty"`
 	Pinned bool           `json:"pinned"`
+
+	Visibility string   `json:"visibility"`
+	SharedWith []string `json:"shared_with"`
 }
 
 type Task struct {
@@ -222,6 +230,9 @@ type Memory struct {
 	CreatedAt   time.Time       `json:"created_at"`
 	ExpiresAt   *time.Time      `json:"expires_at,omitempty"`
 	AccessCount int64           `json:"access_count"`
+
+	Visibility string   `json:"visibility"`
+	SharedWith []string `json:"shared_with"`
 }
 
 type AgentComment struct {

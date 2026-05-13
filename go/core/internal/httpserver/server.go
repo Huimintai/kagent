@@ -253,6 +253,7 @@ func (s *HTTPServer) setupRoutes() {
 	s.router.HandleFunc(APIPathAgents, adaptHandler(s.handlers.Agents.HandleUpdateAgent)).Methods(http.MethodPut)
 	s.router.HandleFunc(APIPathAgents+"/{namespace}/{name}", adaptHandler(s.handlers.Agents.HandleGetAgent)).Methods(http.MethodGet)
 	s.router.HandleFunc(APIPathAgents+"/{namespace}/{name}", adaptHandler(s.handlers.Agents.HandleDeleteAgent)).Methods(http.MethodDelete)
+	s.router.HandleFunc(APIPathAgents+"/{namespace}/{name}/visibility", adaptHandler(s.handlers.Agents.HandleUpdateAgentVisibility)).Methods(http.MethodPut)
 
 	// Agent comments
 	s.router.HandleFunc(APIPathAgents+"/{namespace}/{name}/comments", adaptHandler(s.handlers.Comments.HandleListComments)).Methods(http.MethodGet)

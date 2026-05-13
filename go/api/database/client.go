@@ -51,13 +51,19 @@ type Client interface {
 	ListFeedback(ctx context.Context, userID string) ([]Feedback, error)
 	ListTasksForSession(ctx context.Context, sessionID string) ([]*protocol.Task, error)
 	ListSessions(ctx context.Context, userID string) ([]Session, error)
+	ListSessionsVisible(ctx context.Context, userID string) ([]Session, error)
 	ListSessionsForAgent(ctx context.Context, agentID string, userID string) ([]Session, error)
+	ListSessionsForAgentVisible(ctx context.Context, agentID string, userID string) ([]Session, error)
 	ListSessionsForAgentAllUsers(ctx context.Context, agentID string) ([]Session, error)
 	ListAgents(ctx context.Context) ([]Agent, error)
+	ListAgentsVisible(ctx context.Context, userID string) ([]Agent, error)
 	ListToolServers(ctx context.Context) ([]ToolServer, error)
 	ListToolsForServer(ctx context.Context, serverName string, groupKind string) ([]Tool, error)
 	ListEventsForSession(ctx context.Context, sessionID, userID string, options QueryOptions) ([]*Event, error)
 	ListPushNotifications(ctx context.Context, taskID string) ([]*protocol.TaskPushNotificationConfig, error)
+
+	// Visibility methods
+	UpdateAgentVisibility(ctx context.Context, agentID, userID, visibility string, sharedWith []string) error
 
 	// Helper methods
 	RefreshToolsForServer(ctx context.Context, serverName string, groupKind string, tools ...*v1alpha2.MCPTool) error

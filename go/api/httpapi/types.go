@@ -149,6 +149,8 @@ type AgentResponse struct {
 	Agent       *AgentResource `json:"agent"`
 	UserID      string         `json:"user_id,omitempty"`
 	PrivateMode bool           `json:"private_mode"`
+	Visibility  string         `json:"visibility"`
+	SharedWith  []string       `json:"shared_with,omitempty"`
 	// Config         *adk.AgentConfig       `json:"config"`
 	ModelProvider         v1alpha2.ModelProvider          `json:"modelProvider"`
 	Model                 string                          `json:"model"`
@@ -159,6 +161,12 @@ type AgentResponse struct {
 	Accepted              bool                            `json:"accepted"`
 	WorkloadMode          v1alpha2.WorkloadMode           `json:"workloadMode,omitempty"`
 	OpenshellAgentHarness *OpenshellAgentHarnessListEntry `json:"openshellAgentHarness,omitempty"`
+}
+
+// UpdateVisibilityRequest is the request body for updating resource visibility.
+type UpdateVisibilityRequest struct {
+	Visibility string   `json:"visibility"`             // "private", "shared", or "public"
+	SharedWith []string `json:"shared_with,omitempty"`  // required when visibility is "shared"
 }
 
 // Session types

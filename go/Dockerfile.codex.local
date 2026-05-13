@@ -1,0 +1,29 @@
+### Runtime image for Codex: Go ADK binary + OpenAI Codex CLI
+### Expects pre-built binary at app (in build context)
+FROM alpine:3.21
+
+RUN apk add --no-cache ca-certificates tzdata bash curl git
+
+# Install Codex CLI binary
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "x86_64" ]; then CODEX_ARCH="x86_64-unknown-linux-musl"; \
+    elif [ "$ARCH" = "aarch64" ]; then CODEX_ARCH="aarch64-unknown-linux-musl"; \
+    else echo "Unsupported: $ARCH" && exit 1; fi && \
+    curl -fsSL "https://github.com/openai/codex/releases/latest/download/codex-${CODEX_ARCH}.tar.gz" \
+        -o /tmp/codex.tar.gz && \
+    tar -xzf /tmp/codex.tar.gz -C /tmp/ && \
+    mv /tmp/codex-${CODEX_ARCH} /usr/local/bin/codex && \
+    chmod +x /usr/local/bin/codex && rm /tmp/codex.tar.gz
+
+# Create non-root user with writable home (Codex CLI needs to write config/PATH)
+RUN adduser -D -u 65532 -h /home/codex codex
+ENV HOME=/home/codex
+
+WORKDIR /
+COPY app /app
+ARG VERSION
+LABEL org.opencontainers.image.version="$VERSION"
+
+ENV CODEX_UNSAFE_ALLOW_NO_SANDBOX=1
+USER 65532:65532
+ENTRYPOINT ["/app"]

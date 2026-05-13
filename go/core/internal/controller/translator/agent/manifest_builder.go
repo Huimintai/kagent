@@ -473,7 +473,6 @@ func buildSkillsRuntime(
 
 	var allOCIRefs []string
 	var gitRefs []v1alpha2.GitRepo
-	var ociAuthSecretRef *corev1.LocalObjectReference
 	var gitAuthSecretRef *corev1.LocalObjectReference
 	var insecureOCI bool
 	var initResources *corev1.ResourceRequirements
@@ -482,7 +481,6 @@ func buildSkillsRuntime(
 	if spec.Skills != nil {
 		allOCIRefs = append(allOCIRefs, spec.Skills.Refs...)
 		gitRefs = spec.Skills.GitRefs
-		ociAuthSecretRef = spec.Skills.OCIAuthSecretRef
 		gitAuthSecretRef = spec.Skills.GitAuthSecretRef
 		insecureOCI = spec.Skills.InsecureSkipVerify
 		if spec.Skills.InitContainer != nil {
@@ -493,16 +491,21 @@ func buildSkillsRuntime(
 		}
 	}
 
+	// Include OCI auth secret in imagePullSecrets if specified
+	pullSecrets := spec.Skills.ImagePullSecrets
+	if spec.Skills != nil && spec.Skills.OCIAuthSecretRef != nil {
+		pullSecrets = append(pullSecrets, *spec.Skills.OCIAuthSecretRef)
+	}
+
 	container, skillsVolumes, err := buildSkillsInitContainer(
 		gitRefs,
 		gitAuthSecretRef,
 		allOCIRefs,
-		ociAuthSecretRef,
 		insecureOCI,
 		manifestCtx.deployment.SecurityContext,
 		initEnv,
 		getDefaultResources(initResources),
-		spec.Skills.ImagePullSecrets,
+		pullSecrets,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build skills init container: %w", err)

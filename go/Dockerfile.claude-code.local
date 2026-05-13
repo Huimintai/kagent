@@ -1,0 +1,19 @@
+### Runtime image for Claude Code: Go ADK binary + Claude Code CLI
+### Expects pre-built binary at app (in build context)
+FROM alpine:3.21
+
+RUN apk add --no-cache ca-certificates tzdata bash curl nodejs npm git
+
+# Install Claude Code CLI
+RUN npm install -g @anthropic-ai/claude-code
+
+RUN mkdir -p /home/nonroot && chown 65532:65532 /home/nonroot
+
+WORKDIR /
+COPY app /app
+ARG VERSION
+LABEL org.opencontainers.image.version="$VERSION"
+
+ENV HOME=/home/nonroot
+USER 65532:65532
+ENTRYPOINT ["/app"]

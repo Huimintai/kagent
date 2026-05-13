@@ -1,0 +1,2 @@
+ALTER TABLE agent DROP COLUMN IF EXISTS visibility, DROP COLUMN IF EXISTS shared_with;
+ALTER TABLE session DROP COLUMN IF EXISTS visibility, DROP COLUMN IF EXISTS shared_with;

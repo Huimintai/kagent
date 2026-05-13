@@ -973,6 +973,8 @@ func (a *kagentReconciler) upsertAgent(ctx context.Context, agent v1alpha2.Agent
 	}
 	userID := utils.DefaultAgentUserID
 	privateMode := false
+	visibility := utils.DefaultAgentVisibility
+	var sharedWith []string
 	if annotations := agent.GetAnnotations(); annotations != nil {
 		if rawUserID := strings.TrimSpace(annotations[utils.AgentUserIDAnnotation]); rawUserID != "" {
 			userID = rawUserID
@@ -980,6 +982,16 @@ func (a *kagentReconciler) upsertAgent(ctx context.Context, agent v1alpha2.Agent
 		if rawPrivateMode, ok := annotations[utils.AgentPrivateModeAnnotation]; ok {
 			if parsedPrivateMode, err := strconv.ParseBool(rawPrivateMode); err == nil {
 				privateMode = parsedPrivateMode
+			}
+		}
+		if v, ok := annotations[utils.AgentVisibilityAnnotation]; ok && v != "" {
+			visibility = v
+		}
+		if raw, ok := annotations[utils.AgentSharedWithAnnotation]; ok && raw != "" {
+			for _, u := range strings.Split(raw, ",") {
+				if trimmed := strings.TrimSpace(u); trimmed != "" {
+					sharedWith = append(sharedWith, trimmed)
+				}
 			}
 		}
 	}
@@ -991,6 +1003,8 @@ func (a *kagentReconciler) upsertAgent(ctx context.Context, agent v1alpha2.Agent
 		Config:       agentOutputs.Config,
 		UserID:       userID,
 		PrivateMode:  privateMode,
+		Visibility:   visibility,
+		SharedWith:   sharedWith,
 	}
 
 	if err := a.dbClient.StoreAgent(ctx, dbAgent); err != nil {

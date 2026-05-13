@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	dbpkg "github.com/kagent-dev/kagent/go/api/database"
 	"github.com/kagent-dev/kagent/go/api/v1alpha2"
@@ -45,6 +46,14 @@ func (c *postgresClient) withTx(ctx context.Context, fn func(*dbgen.Queries) err
 // ── Agents ────────────────────────────────────────────────────────────────────
 
 func (c *postgresClient) StoreAgent(ctx context.Context, agent *dbpkg.Agent) error {
+	visibility := agent.Visibility
+	if visibility == "" {
+		visibility = "private"
+	}
+	sharedWith := agent.SharedWith
+	if sharedWith == nil {
+		sharedWith = []string{}
+	}
 	return c.q.UpsertAgent(ctx, dbgen.UpsertAgentParams{
 		ID:           agent.ID,
 		Type:         agent.Type,
@@ -52,6 +61,8 @@ func (c *postgresClient) StoreAgent(ctx context.Context, agent *dbpkg.Agent) err
 		Config:       agent.Config,
 		UserID:       agent.UserID,
 		PrivateMode:  agent.PrivateMode,
+		Visibility:   visibility,
+		SharedWith:   sharedWith,
 	})
 }
 
@@ -79,16 +90,47 @@ func (c *postgresClient) DeleteAgent(ctx context.Context, agentID string) error 
 	return c.q.SoftDeleteAgent(ctx, agentID)
 }
 
+func (c *postgresClient) ListAgentsVisible(ctx context.Context, userID string) ([]dbpkg.Agent, error) {
+	rows, err := c.q.ListAgentsVisible(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list visible agents: %w", err)
+	}
+	agents := make([]dbpkg.Agent, len(rows))
+	for i, r := range rows {
+		agents[i] = *toAgent(r)
+	}
+	return agents, nil
+}
+
+func (c *postgresClient) UpdateAgentVisibility(ctx context.Context, agentID, userID, visibility string, sharedWith []string) error {
+	return c.q.UpdateAgentVisibility(ctx, dbgen.UpdateAgentVisibilityParams{
+		ID:         agentID,
+		Visibility: visibility,
+		SharedWith: sharedWith,
+		UserID:     userID,
+	})
+}
+
 // ── Sessions ──────────────────────────────────────────────────────────────────
 
 func (c *postgresClient) StoreSession(ctx context.Context, session *dbpkg.Session) error {
 	return c.withTx(ctx, func(q *dbgen.Queries) error {
+		visibility := session.Visibility
+		if visibility == "" {
+			visibility = "private"
+		}
+		sharedWith := session.SharedWith
+		if sharedWith == nil {
+			sharedWith = []string{}
+		}
 		params := dbgen.UpsertSessionParams{
-			ID:      session.ID,
-			UserID:  session.UserID,
-			Name:    session.Name,
-			AgentID: session.AgentID,
-			Pinned:  session.Pinned,
+			ID:         session.ID,
+			UserID:     session.UserID,
+			Name:       session.Name,
+			AgentID:    session.AgentID,
+			Pinned:     session.Pinned,
+			Visibility: visibility,
+			SharedWith: sharedWith,
 		}
 		if session.Source != nil {
 			src := string(*session.Source)
@@ -145,6 +187,33 @@ func (c *postgresClient) ListSessionsForAgentAllUsers(ctx context.Context, agent
 	rows, err := c.q.ListSessionsForAgentAllUsers(ctx, &agentID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list sessions for agent across all users: %w", err)
+	}
+	sessions := make([]dbpkg.Session, len(rows))
+	for i, r := range rows {
+		sessions[i] = *toSession(r)
+	}
+	return sessions, nil
+}
+
+func (c *postgresClient) ListSessionsVisible(ctx context.Context, userID string) ([]dbpkg.Session, error) {
+	rows, err := c.q.ListSessionsVisible(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list visible sessions: %w", err)
+	}
+	sessions := make([]dbpkg.Session, len(rows))
+	for i, r := range rows {
+		sessions[i] = *toSession(r)
+	}
+	return sessions, nil
+}
+
+func (c *postgresClient) ListSessionsForAgentVisible(ctx context.Context, agentID, userID string) ([]dbpkg.Session, error) {
+	rows, err := c.q.ListSessionsForAgentVisible(ctx, dbgen.ListSessionsForAgentVisibleParams{
+		AgentID: &agentID,
+		UserID:  userID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list visible sessions for agent: %w", err)
 	}
 	sessions := make([]dbpkg.Session, len(rows))
 	for i, r := range rows {
@@ -579,12 +648,22 @@ func (c *postgresClient) GetCrewAIFlowState(ctx context.Context, userID, threadI
 // ── Agent Memory (vector search) ──────────────────────────────────────────────
 
 func (c *postgresClient) StoreAgentMemory(ctx context.Context, memory *dbpkg.Memory) error {
+	visibility := memory.Visibility
+	if visibility == "" {
+		visibility = "private"
+	}
+	sharedWith := memory.SharedWith
+	if sharedWith == nil {
+		sharedWith = []string{}
+	}
 	id, err := c.q.InsertMemory(ctx, dbgen.InsertMemoryParams{
 		AgentName:   &memory.AgentName,
 		UserID:      &memory.UserID,
 		Content:     &memory.Content,
 		Embedding:   memory.Embedding,
 		Metadata:    &memory.Metadata,
+		Visibility:  visibility,
+		SharedWith:  sharedWith,
 		ExpiresAt:   memory.ExpiresAt,
 		AccessCount: &memory.AccessCount,
 	})
@@ -598,12 +677,22 @@ func (c *postgresClient) StoreAgentMemory(ctx context.Context, memory *dbpkg.Mem
 func (c *postgresClient) StoreAgentMemories(ctx context.Context, memories []*dbpkg.Memory) error {
 	return c.withTx(ctx, func(q *dbgen.Queries) error {
 		for _, m := range memories {
+			visibility := m.Visibility
+			if visibility == "" {
+				visibility = "private"
+			}
+			sharedWith := m.SharedWith
+			if sharedWith == nil {
+				sharedWith = []string{}
+			}
 			id, err := q.InsertMemory(ctx, dbgen.InsertMemoryParams{
 				AgentName:   &m.AgentName,
 				UserID:      &m.UserID,
 				Content:     &m.Content,
 				Embedding:   m.Embedding,
 				Metadata:    &m.Metadata,
+				Visibility:  visibility,
+				SharedWith:  sharedWith,
 				ExpiresAt:   m.ExpiresAt,
 				AccessCount: &m.AccessCount,
 			})
@@ -824,19 +913,23 @@ func toAgent(r dbgen.Agent) *dbpkg.Agent {
 		Config:       r.Config,
 		UserID:       r.UserID,
 		PrivateMode:  r.PrivateMode,
+		Visibility:   r.Visibility,
+		SharedWith:   r.SharedWith,
 	}
 }
 
 func toSession(r dbgen.Session) *dbpkg.Session {
 	s := &dbpkg.Session{
-		ID:        r.ID,
-		UserID:    r.UserID,
-		Name:      r.Name,
-		CreatedAt: derefTime(r.CreatedAt),
-		UpdatedAt: derefTime(r.UpdatedAt),
-		DeletedAt: r.DeletedAt,
-		AgentID:   r.AgentID,
-		Pinned:    r.Pinned,
+		ID:         r.ID,
+		UserID:     r.UserID,
+		Name:       r.Name,
+		CreatedAt:  derefTime(r.CreatedAt),
+		UpdatedAt:  derefTime(r.UpdatedAt),
+		DeletedAt:  r.DeletedAt,
+		AgentID:    r.AgentID,
+		Pinned:     r.Pinned,
+		Visibility: r.Visibility,
+		SharedWith: r.SharedWith,
 	}
 	if r.Source != nil {
 		src := dbpkg.SessionSource(*r.Source)
@@ -975,6 +1068,8 @@ func toMemory(r dbgen.Memory) *dbpkg.Memory {
 		CreatedAt:   derefTime(r.CreatedAt),
 		ExpiresAt:   r.ExpiresAt,
 		AccessCount: derefInt64(r.AccessCount),
+		Visibility:  r.Visibility,
+		SharedWith:  r.SharedWith,
 	}
 }
 
@@ -984,9 +1079,23 @@ func toAgentComment(r dbgen.AgentComment) *dbpkg.AgentComment {
 		AgentID:   r.AgentID,
 		UserID:    r.UserID,
 		Content:   r.Content,
-		CreatedAt: derefTime(r.CreatedAt),
-		DeletedAt: r.DeletedAt,
+		CreatedAt: timestamptzToTime(r.CreatedAt),
+		DeletedAt: timestamptzToPtr(r.DeletedAt),
 	}
+}
+
+func timestamptzToTime(t pgtype.Timestamptz) time.Time {
+	if t.Valid {
+		return t.Time
+	}
+	return time.Time{}
+}
+
+func timestamptzToPtr(t pgtype.Timestamptz) *time.Time {
+	if t.Valid {
+		return &t.Time
+	}
+	return nil
 }
 
 // ── Pointer helpers ───────────────────────────────────────────────────────────

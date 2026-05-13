@@ -45,19 +45,58 @@ The skill includes detailed reference materials on CRD workflows, translator pat
 
 ```
 kagent/
-├── go/                      # Go workspace (go.work)
-│   ├── api/                 # Shared types: CRDs, ADK types, DB models, HTTP client
-│   ├── core/                # Infrastructure: controllers, HTTP server, CLI
-│   └── adk/                 # Go Agent Development Kit
-├── python/                  # Agent runtime and ADK
-│   ├── packages/            # UV workspace packages (kagent-adk, etc.)
-│   └── samples/             # Example agents
-├── ui/                      # Next.js web interface
-├── helm/                    # Kubernetes deployment charts
-│   ├── kagent-crds/         # CRD chart (install first)
-│   └── kagent/              # Main application chart
-└── .claude/skills/kagent-dev/  # Development skill
+├── go/                          # Go module (single go.mod)
+│   ├── api/                     # Shared types: CRDs, ADK types, DB models, HTTP client
+│   │   └── v1alpha2/            # Current CRD version (8 CRDs)
+│   ├── core/                    # Infrastructure: controllers, HTTP server, CLI
+│   │   ├── internal/controller/ # 10 controllers + translators
+│   │   ├── internal/httpserver/ # REST API (40+ routes)
+│   │   ├── cli/                 # kagent CLI tool
+│   │   └── test/e2e/            # E2E tests
+│   └── adk/                     # Go Agent Development Kit
+├── python/                      # Agent runtime and ADK
+│   ├── packages/                # UV workspace (9 packages)
+│   │   ├── kagent-adk/          # Main Python ADK
+│   │   ├── kagent-core/         # Core utilities
+│   │   ├── kagent-skills/       # Skills framework
+│   │   ├── kagent-sota-adapter/ # SOTA adapter (Claude Code, Codex)
+│   │   ├── kagent-crewai/       # CrewAI integration
+│   │   ├── kagent-langgraph/    # LangGraph integration
+│   │   └── kagent-openai/       # OpenAI utilities
+│   └── samples/                 # Example agents
+├── ui/                          # Next.js web interface
+├── helm/                        # Kubernetes deployment charts
+│   ├── kagent-crds/             # CRD chart (install first)
+│   └── kagent/                  # Main application chart
+├── scripts/build/               # Per-component build scripts
+├── docker/                      # Dockerfiles for non-Go components
+└── docs/architecture/           # Architecture documentation
 ```
+
+---
+
+## CRDs (v1alpha2)
+
+| CRD | Purpose |
+|-----|---------|
+| Agent | Main AI agent resource |
+| SandboxAgent | Sandbox-based agent variant |
+| AgentHarness | Multi-channel agent harnesses |
+| ModelConfig | LLM provider configuration |
+| ModelProviderConfig | Model provider setup |
+| PlatformCredential | Platform credentials |
+| RemoteMCPServer | External MCP tool servers |
+| ScheduledRun | Scheduled agent executions |
+
+---
+
+## Controllers
+
+10 controllers in `go/core/internal/controller/`:
+- agent, sandboxagent, agentharness
+- modelconfig, modelproviderconfig
+- remote_mcp_server, mcp_server_tool
+- scheduledrun (+ scheduler), service
 
 ---
 
@@ -98,10 +137,10 @@ if err != nil {
 ### Testing
 
 **Required for all PRs:**
-- ✅ Unit tests for new functions/methods
-- ✅ E2E tests for new CRD fields or API endpoints
-- ✅ Mock external services (LLMs, K8s API) in unit tests
-- ✅ All tests passing in CI pipeline
+- Unit tests for new functions/methods
+- E2E tests for new CRD fields or API endpoints
+- Mock external services (LLMs, K8s API) in unit tests
+- All tests passing in CI pipeline
 
 **Go testing pattern (table-driven):**
 ```go
@@ -142,13 +181,6 @@ Use **Conventional Commits** format:
 
 **Types:** `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`, `ci`
 
-**Examples:**
-```
-feat: add support for custom service account in agent CRD
-fix: enable usage metadata in streaming OpenAI responses
-docs: update CLAUDE.md with testing requirements
-```
-
 ---
 
 ## API Versioning
@@ -162,7 +194,7 @@ Breaking changes are acceptable in alpha versions.
 
 ## Best Practices
 
-### Do's ✅
+### Do's
 
 - Read existing code before making changes
 - Follow the language guidelines (Go for infra, Python for agents, TS for UI)
@@ -173,7 +205,7 @@ Breaking changes are acceptable in alpha versions.
 - Update documentation for user-facing changes
 - Run `make lint` before submitting
 
-### Don'ts ❌
+### Don'ts
 
 - Don't add features beyond what's requested (avoid over-engineering)
 - Don't modify v1alpha1 unless fixing critical bugs (focus on v1alpha2)
@@ -192,23 +224,24 @@ Breaking changes are acceptable in alpha versions.
 | Create Kind cluster | `make create-kind-cluster` |
 | Deploy kagent | `make helm-install` |
 | Build all | `make build` |
-| Run all tests | `make test` |
-| Run E2E tests | `make -C go e2e` |
+| Build specific | `make build-controller`, `build-ui`, `build-app`, `build-golang-adk` |
+| Run Go tests | `make -C go test` |
+| Run E2E tests | `cd go && go test ./core/test/e2e/ -v -run TestE2E` |
 | Lint code | `make -C go lint` |
 | Generate CRD code | `make -C go generate` |
-| Access UI | `kubectl port-forward -n kagent svc/kagent-ui 3000:8080` |
+| Install CLI locally | `make kagent-cli-install` |
+| Port-forward UI | `make kagent-ui-port-forward` |
+| Push test agent | `make push-test-agent` |
 
 ---
 
 ## Additional Resources
 
-- **Development setup:** See [DEVELOPMENT.md](DEVELOPMENT.md)
-- **Contributing:** See [CONTRIBUTING.md](CONTRIBUTING.md)
 - **Architecture:** See [docs/architecture/](docs/architecture/)
-- **Examples:** Check `examples/` and `python/samples/`
+- **E2E Tests:** See [go/core/test/e2e/README.md](go/core/test/e2e/README.md)
+- **Examples:** Check `python/samples/`
+- **Helm:** See [helm/README.md](helm/README.md)
 
 ---
 
 **Project Version:** v0.x.x (Alpha)
-
-For questions or suggestions about this guide, please open an issue or PR.

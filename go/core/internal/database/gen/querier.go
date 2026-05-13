@@ -16,7 +16,7 @@ type Querier interface {
 	DeleteExpiredMemories(ctx context.Context) error
 	ExtendMemoryTTL(ctx context.Context) error
 	GetAgent(ctx context.Context, id string) (Agent, error)
-	// Returns top agents ranked by session count with event/message count
+	// Returns top agents ranked by distinct user count with session/message counts
 	GetAgentSessionStats(ctx context.Context, limit int32) ([]GetAgentSessionStatsRow, error)
 	GetCheckpoint(ctx context.Context, arg GetCheckpointParams) (LgCheckpoint, error)
 	GetEvent(ctx context.Context, arg GetEventParams) (Event, error)
@@ -29,7 +29,7 @@ type Querier interface {
 	GetTask(ctx context.Context, id string) (Task, error)
 	GetTool(ctx context.Context, id string) (Tool, error)
 	GetToolServer(ctx context.Context, name string) (Toolserver, error)
-	// Returns tool servers ranked by tool count (proxy for popularity)
+	// Returns tool servers ranked by number of agents that reference their tools
 	GetToolServerStats(ctx context.Context, limit int32) ([]GetToolServerStatsRow, error)
 	HardDeleteCrewAIMemory(ctx context.Context, arg HardDeleteCrewAIMemoryParams) error
 	IncrementMemoryAccessCount(ctx context.Context, dollar_1 []string) error
@@ -38,7 +38,9 @@ type Querier interface {
 	InsertMemory(ctx context.Context, arg InsertMemoryParams) (string, error)
 	ListAgentComments(ctx context.Context, arg ListAgentCommentsParams) ([]AgentComment, error)
 	ListAgentMemories(ctx context.Context, arg ListAgentMemoriesParams) ([]Memory, error)
+	ListAgentMemoriesVisible(ctx context.Context, arg ListAgentMemoriesVisibleParams) ([]Memory, error)
 	ListAgents(ctx context.Context) ([]Agent, error)
+	ListAgentsVisible(ctx context.Context, userID string) ([]Agent, error)
 	ListCheckpointWrites(ctx context.Context, arg ListCheckpointWritesParams) ([]LgCheckpointWrite, error)
 	ListCheckpoints(ctx context.Context, arg ListCheckpointsParams) ([]LgCheckpoint, error)
 	ListCheckpointsLimit(ctx context.Context, arg ListCheckpointsLimitParams) ([]LgCheckpoint, error)
@@ -53,6 +55,8 @@ type Querier interface {
 	ListSessions(ctx context.Context, userID string) ([]Session, error)
 	ListSessionsForAgent(ctx context.Context, arg ListSessionsForAgentParams) ([]Session, error)
 	ListSessionsForAgentAllUsers(ctx context.Context, agentID *string) ([]Session, error)
+	ListSessionsForAgentVisible(ctx context.Context, arg ListSessionsForAgentVisibleParams) ([]Session, error)
+	ListSessionsVisible(ctx context.Context, userID string) ([]Session, error)
 	ListTasksForSession(ctx context.Context, sessionID *string) ([]Task, error)
 	ListToolServers(ctx context.Context) ([]Toolserver, error)
 	ListTools(ctx context.Context) ([]Tool, error)
@@ -60,6 +64,7 @@ type Querier interface {
 	// Memory uses hard DELETE (not soft deletes), so no deleted_at filter is needed.
 	// COALESCE guards against NULL embeddings (score=0 rather than NULL); rows are still ordered last by the ORDER BY clause.
 	SearchAgentMemory(ctx context.Context, arg SearchAgentMemoryParams) ([]SearchAgentMemoryRow, error)
+	SearchAgentMemoryVisible(ctx context.Context, arg SearchAgentMemoryVisibleParams) ([]SearchAgentMemoryVisibleRow, error)
 	SearchCrewAIMemoryByTask(ctx context.Context, arg SearchCrewAIMemoryByTaskParams) ([]CrewaiAgentMemory, error)
 	SearchCrewAIMemoryByTaskLimit(ctx context.Context, arg SearchCrewAIMemoryByTaskLimitParams) ([]CrewaiAgentMemory, error)
 	SoftDeleteAgent(ctx context.Context, id string) error
@@ -72,6 +77,7 @@ type Querier interface {
 	SoftDeleteToolServer(ctx context.Context, arg SoftDeleteToolServerParams) error
 	SoftDeleteToolsForServer(ctx context.Context, arg SoftDeleteToolsForServerParams) error
 	TaskExists(ctx context.Context, id string) (bool, error)
+	UpdateAgentVisibility(ctx context.Context, arg UpdateAgentVisibilityParams) error
 	UpsertAgent(ctx context.Context, arg UpsertAgentParams) error
 	UpsertCheckpoint(ctx context.Context, arg UpsertCheckpointParams) error
 	UpsertCheckpointWrite(ctx context.Context, arg UpsertCheckpointWriteParams) error

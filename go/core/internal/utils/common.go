@@ -15,8 +15,11 @@ import (
 const (
 	AgentUserIDAnnotation      = "kagent.dev/user-id"
 	AgentPrivateModeAnnotation = "kagent.dev/private-mode"
+	AgentVisibilityAnnotation  = "kagent.dev/visibility"
+	AgentSharedWithAnnotation  = "kagent.dev/shared-with"
 	DefaultAgentUserID         = "admin@kagent.dev"
 	DefaultAgentPrivateMode    = true
+	DefaultAgentVisibility     = "private"
 )
 
 // ObjectWithModelConfig represents a Kubernetes resource that can be associated with a ModelConfig.

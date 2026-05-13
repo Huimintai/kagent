@@ -58,8 +58,8 @@ func (q *Queries) IncrementMemoryAccessCount(ctx context.Context, dollar_1 []str
 }
 
 const insertMemory = `-- name: InsertMemory :one
-INSERT INTO memory (agent_name, user_id, content, embedding, metadata, created_at, expires_at, access_count)
-VALUES ($1, $2, $3, $4, $5, NOW(), $6, $7)
+INSERT INTO memory (agent_name, user_id, content, embedding, metadata, visibility, shared_with, created_at, expires_at, access_count)
+VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8, $9)
 RETURNING id
 `
 
@@ -69,6 +69,8 @@ type InsertMemoryParams struct {
 	Content     *string
 	Embedding   pgvector_go.Vector
 	Metadata    *string
+	Visibility  string
+	SharedWith  []string
 	ExpiresAt   *time.Time
 	AccessCount *int64
 }
@@ -80,6 +82,8 @@ func (q *Queries) InsertMemory(ctx context.Context, arg InsertMemoryParams) (str
 		arg.Content,
 		arg.Embedding,
 		arg.Metadata,
+		arg.Visibility,
+		arg.SharedWith,
 		arg.ExpiresAt,
 		arg.AccessCount,
 	)
@@ -89,7 +93,7 @@ func (q *Queries) InsertMemory(ctx context.Context, arg InsertMemoryParams) (str
 }
 
 const listAgentMemories = `-- name: ListAgentMemories :many
-SELECT id, agent_name, user_id, content, embedding, metadata, created_at, expires_at, access_count FROM memory
+SELECT id, agent_name, user_id, content, embedding, metadata, created_at, expires_at, access_count, visibility, shared_with FROM memory
 WHERE (agent_name = $1 OR agent_name = $2) AND user_id = $3
 ORDER BY access_count DESC
 `
@@ -119,6 +123,56 @@ func (q *Queries) ListAgentMemories(ctx context.Context, arg ListAgentMemoriesPa
 			&i.CreatedAt,
 			&i.ExpiresAt,
 			&i.AccessCount,
+			&i.Visibility,
+			&i.SharedWith,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAgentMemoriesVisible = `-- name: ListAgentMemoriesVisible :many
+SELECT id, agent_name, user_id, content, embedding, metadata, created_at, expires_at, access_count, visibility, shared_with FROM memory
+WHERE (agent_name = $1 OR agent_name = $2) AND (
+    visibility = 'public'
+    OR user_id = $3
+    OR (visibility = 'shared' AND $3 = ANY(shared_with))
+)
+ORDER BY access_count DESC
+`
+
+type ListAgentMemoriesVisibleParams struct {
+	AgentName   *string
+	AgentName_2 *string
+	UserID      *string
+}
+
+func (q *Queries) ListAgentMemoriesVisible(ctx context.Context, arg ListAgentMemoriesVisibleParams) ([]Memory, error) {
+	rows, err := q.db.Query(ctx, listAgentMemoriesVisible, arg.AgentName, arg.AgentName_2, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Memory
+	for rows.Next() {
+		var i Memory
+		if err := rows.Scan(
+			&i.ID,
+			&i.AgentName,
+			&i.UserID,
+			&i.Content,
+			&i.Embedding,
+			&i.Metadata,
+			&i.CreatedAt,
+			&i.ExpiresAt,
+			&i.AccessCount,
+			&i.Visibility,
+			&i.SharedWith,
 		); err != nil {
 			return nil, err
 		}
@@ -131,7 +185,7 @@ func (q *Queries) ListAgentMemories(ctx context.Context, arg ListAgentMemoriesPa
 }
 
 const searchAgentMemory = `-- name: SearchAgentMemory :many
-SELECT id, agent_name, user_id, content, embedding, metadata, created_at, expires_at, access_count, COALESCE(1 - (embedding <=> $1), 0) AS score
+SELECT id, agent_name, user_id, content, embedding, metadata, created_at, expires_at, access_count, visibility, shared_with, COALESCE(1 - (embedding <=> $1), 0) AS score
 FROM memory
 WHERE agent_name = $2 AND user_id = $3
 ORDER BY embedding <=> $1 ASC
@@ -155,6 +209,8 @@ type SearchAgentMemoryRow struct {
 	CreatedAt   *time.Time
 	ExpiresAt   *time.Time
 	AccessCount *int64
+	Visibility  string
+	SharedWith  []string
 	Score       interface{}
 }
 
@@ -184,6 +240,80 @@ func (q *Queries) SearchAgentMemory(ctx context.Context, arg SearchAgentMemoryPa
 			&i.CreatedAt,
 			&i.ExpiresAt,
 			&i.AccessCount,
+			&i.Visibility,
+			&i.SharedWith,
+			&i.Score,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const searchAgentMemoryVisible = `-- name: SearchAgentMemoryVisible :many
+SELECT id, agent_name, user_id, content, embedding, metadata, created_at, expires_at, access_count, visibility, shared_with, COALESCE(1 - (embedding <=> $1), 0) AS score
+FROM memory
+WHERE agent_name = $2 AND (
+    visibility = 'public'
+    OR user_id = $3
+    OR (visibility = 'shared' AND $3 = ANY(shared_with))
+)
+ORDER BY embedding <=> $1 ASC
+LIMIT $4
+`
+
+type SearchAgentMemoryVisibleParams struct {
+	Embedding pgvector_go.Vector
+	AgentName *string
+	UserID    *string
+	Limit     int32
+}
+
+type SearchAgentMemoryVisibleRow struct {
+	ID          string
+	AgentName   *string
+	UserID      *string
+	Content     *string
+	Embedding   pgvector_go.Vector
+	Metadata    *string
+	CreatedAt   *time.Time
+	ExpiresAt   *time.Time
+	AccessCount *int64
+	Visibility  string
+	SharedWith  []string
+	Score       interface{}
+}
+
+func (q *Queries) SearchAgentMemoryVisible(ctx context.Context, arg SearchAgentMemoryVisibleParams) ([]SearchAgentMemoryVisibleRow, error) {
+	rows, err := q.db.Query(ctx, searchAgentMemoryVisible,
+		arg.Embedding,
+		arg.AgentName,
+		arg.UserID,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SearchAgentMemoryVisibleRow
+	for rows.Next() {
+		var i SearchAgentMemoryVisibleRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.AgentName,
+			&i.UserID,
+			&i.Content,
+			&i.Embedding,
+			&i.Metadata,
+			&i.CreatedAt,
+			&i.ExpiresAt,
+			&i.AccessCount,
+			&i.Visibility,
+			&i.SharedWith,
 			&i.Score,
 		); err != nil {
 			return nil, err

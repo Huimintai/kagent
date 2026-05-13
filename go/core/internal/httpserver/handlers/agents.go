@@ -42,6 +42,8 @@ func (h *AgentsHandler) HandleListAgents(w ErrorResponseWriter, r *http.Request)
 		return
 	}
 
+	userID, _ := GetUserID(r)
+
 	agentList := &v1alpha2.AgentList{}
 	if err := h.KubeClient.List(r.Context(), agentList); err != nil {
 		w.RespondWithError(errors.NewInternalServerError("Failed to list Agents from Kubernetes", err))
@@ -62,6 +64,11 @@ func (h *AgentsHandler) HandleListAgents(w ErrorResponseWriter, r *http.Request)
 			}
 			agentsWithID = append(agentsWithID, h.openshellAgentHarnessAgentResponse(r.Context(), log, sb))
 		}
+	}
+
+	// Filter by visibility: only show agents the user is allowed to see
+	if userID != "" {
+		agentsWithID = filterAgentsByVisibility(agentsWithID, userID)
 	}
 
 	log.Info("Successfully listed agents", "count", len(agentsWithID))
@@ -220,6 +227,7 @@ func (h *AgentsHandler) getAgentResponse(ctx context.Context, log logr.Logger, a
 		Agent:           api.AgentResourceFrom(agent),
 		UserID:          utils.DefaultAgentUserID,
 		PrivateMode:     utils.DefaultAgentPrivateMode,
+		Visibility:      utils.DefaultAgentVisibility,
 		DeploymentReady: deploymentReady,
 		Accepted:        accepted,
 		WorkloadMode:    agent.GetWorkloadMode(),
@@ -234,11 +242,23 @@ func (h *AgentsHandler) getAgentResponse(ctx context.Context, log logr.Logger, a
 				response.PrivateMode = parsedPrivateMode
 			}
 		}
+		if v, ok := annotations[utils.AgentVisibilityAnnotation]; ok && v != "" {
+			response.Visibility = v
+		}
+		if raw, ok := annotations[utils.AgentSharedWithAnnotation]; ok && raw != "" {
+			for _, u := range strings.Split(raw, ",") {
+				if trimmed := strings.TrimSpace(u); trimmed != "" {
+					response.SharedWith = append(response.SharedWith, trimmed)
+				}
+			}
+		}
 	}
 
 	if dbAgent, err := h.DatabaseService.GetAgent(ctx, agentID); err == nil && dbAgent != nil {
 		response.UserID = dbAgent.UserID
 		response.PrivateMode = dbAgent.PrivateMode
+		response.Visibility = dbAgent.Visibility
+		response.SharedWith = dbAgent.SharedWith
 	} else if err != nil {
 		log.V(1).Info("Agent not found in database; using metadata/default access state", "agentID", agentID, "error", err.Error())
 	}
@@ -830,6 +850,11 @@ func setAgentAccessMetadata(agent client.Object, sourceAnnotations map[string]st
 		}
 	}
 
+	visibility := utils.DefaultAgentVisibility
+	if v, ok := sourceAnnotations[utils.AgentVisibilityAnnotation]; ok && v != "" {
+		visibility = v
+	}
+
 	annotations := agent.GetAnnotations()
 	if annotations == nil {
 		annotations = make(map[string]string)
@@ -837,5 +862,90 @@ func setAgentAccessMetadata(agent client.Object, sourceAnnotations map[string]st
 
 	annotations[utils.AgentUserIDAnnotation] = userID
 	annotations[utils.AgentPrivateModeAnnotation] = strconv.FormatBool(privateMode)
+	annotations[utils.AgentVisibilityAnnotation] = visibility
+	if sw, ok := sourceAnnotations[utils.AgentSharedWithAnnotation]; ok {
+		annotations[utils.AgentSharedWithAnnotation] = sw
+	}
 	agent.SetAnnotations(annotations)
+}
+
+// filterAgentsByVisibility filters a list of agent responses based on visibility rules.
+func filterAgentsByVisibility(agents []api.AgentResponse, userID string) []api.AgentResponse {
+	filtered := make([]api.AgentResponse, 0, len(agents))
+	for _, a := range agents {
+		switch a.Visibility {
+		case "public":
+			filtered = append(filtered, a)
+		case "shared":
+			if a.UserID == userID || containsStr(a.SharedWith, userID) {
+				filtered = append(filtered, a)
+			}
+		default: // "private" or empty
+			if a.UserID == userID {
+				filtered = append(filtered, a)
+			}
+		}
+	}
+	return filtered
+}
+
+func containsStr(ss []string, s string) bool {
+	for _, v := range ss {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+// HandleUpdateAgentVisibility handles PUT /api/agents/{namespace}/{name}/visibility requests.
+func (h *AgentsHandler) HandleUpdateAgentVisibility(w ErrorResponseWriter, r *http.Request) {
+	log := ctrllog.FromContext(r.Context()).WithName("agents-handler").WithValues("operation", "update-visibility")
+
+	userID, err := GetUserID(r)
+	if err != nil {
+		w.RespondWithError(errors.NewBadRequestError("Failed to get user ID", err))
+		return
+	}
+
+	var req api.UpdateVisibilityRequest
+	if err := DecodeJSONBody(r, &req); err != nil {
+		w.RespondWithError(errors.NewBadRequestError("Invalid request body", err))
+		return
+	}
+
+	// Validate visibility value
+	switch req.Visibility {
+	case "private", "shared", "public":
+	default:
+		w.RespondWithError(errors.NewBadRequestError("Invalid visibility value; must be private, shared, or public", fmt.Errorf("got: %s", req.Visibility)))
+		return
+	}
+	if req.Visibility == "shared" && len(req.SharedWith) == 0 {
+		w.RespondWithError(errors.NewBadRequestError("shared_with is required when visibility is shared", nil))
+		return
+	}
+
+	namespace, err := GetPathParam(r, "namespace")
+	if err != nil {
+		w.RespondWithError(errors.NewBadRequestError("Missing namespace", err))
+		return
+	}
+	name, err := GetPathParam(r, "name")
+	if err != nil {
+		w.RespondWithError(errors.NewBadRequestError("Missing name", err))
+		return
+	}
+
+	agentID := utils.ConvertToPythonIdentifier(namespace + "/" + name)
+
+	// Only the owner can update visibility
+	if err := h.DatabaseService.UpdateAgentVisibility(r.Context(), agentID, userID, req.Visibility, req.SharedWith); err != nil {
+		log.Error(err, "Failed to update agent visibility", "agentID", agentID)
+		w.RespondWithError(errors.NewInternalServerError("Failed to update visibility", err))
+		return
+	}
+
+	log.Info("Updated agent visibility", "agentID", agentID, "visibility", req.Visibility)
+	RespondWithJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }

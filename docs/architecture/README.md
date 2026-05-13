@@ -129,6 +129,9 @@ The HTTP server runs in the same `kagent-controller` binary, listening on port 8
 | `/api/memories` | GET/POST | Vector search & storage |
 | `/api/runs` | GET | Agent run tracking |
 | `/api/feedback` | POST | User feedback collection |
+| `/api/stats` | GET | Dashboard leaderboard stats (top agents, MCPs) |
+| `/api/agents/{ns}/{name}/comments` | GET/POST | Agent comment CRUD |
+| `/api/agents/{ns}/{name}/comments/{id}` | DELETE | Delete own comment |
 | `/mcp` | POST | MCP protocol proxy |
 | `/health` | GET | Health check |
 
@@ -145,6 +148,7 @@ The controller uses SQLite (default) or PostgreSQL for persistent state that sup
 | `Tool` | Individual tools discovered from MCP servers |
 | `Conversation` | Chat conversation (linked to an agent) |
 | `Session` | Agent session (linked to a conversation) |
+| `AgentComment` | User comments/feedback on agents |
 
 **Why a separate DB?** The Kubernetes API is not designed for high-frequency read patterns like listing conversations or searching tools. The DB provides fast lookups for the HTTP API and UI, while the CRDs remain the source of truth for agent configuration.
 

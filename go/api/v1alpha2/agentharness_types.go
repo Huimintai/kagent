@@ -18,12 +18,13 @@ import (
 
 // AgentHarnessBackendType selects which sandbox control plane provisions the
 // environment. Additional backends may be added in the future.
-// +kubebuilder:validation:Enum=openclaw;nemoclaw
+// +kubebuilder:validation:Enum=openclaw;nemoclaw;openshell
 type AgentHarnessBackendType string
 
 const (
-	AgentHarnessBackendOpenClaw AgentHarnessBackendType = "openclaw"
-	AgentHarnessBackendNemoClaw AgentHarnessBackendType = "nemoclaw"
+	AgentHarnessBackendOpenClaw  AgentHarnessBackendType = "openclaw"
+	AgentHarnessBackendNemoClaw  AgentHarnessBackendType = "nemoclaw"
+	AgentHarnessBackendOpenshell AgentHarnessBackendType = "openshell"
 )
 
 // AgentHarnessChannelType selects a messenger integration for OpenClaw harness VMs.

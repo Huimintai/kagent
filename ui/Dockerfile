@@ -10,7 +10,9 @@ ARG BUILDPLATFORM
 ARG TOOLS_NODE_VERSION
 
 RUN echo "Installing on $BUILDPLATFORM" \
-    && apk add --no-cache curl bash openssl unzip ca-certificates nginx supervisor "nodejs~${TOOLS_NODE_VERSION}" npm node-gyp \
+    && apk add --no-cache curl bash openssl unzip ca-certificates nginx supervisor "nodejs~${TOOLS_NODE_VERSION}" npm \
+    && npm install -g node-gyp \
+    && ln -sf /usr/local/lib/node_modules/node-gyp /usr/lib/node_modules/npm/node_modules/node-gyp \
     && update-ca-certificates
 
 ENV DO_NOT_TRACK=1
@@ -22,7 +24,7 @@ WORKDIR /app/ui
 # Copy package files and install dependencies
 COPY package*.json ./
 RUN --mount=type=cache,target=/root/.npm,rw \
-    npm ci
+    npm ci --legacy-peer-deps
 
 ### STAGE 2: Build
 FROM --platform=$BUILDPLATFORM deps AS builder
@@ -30,11 +32,26 @@ FROM --platform=$BUILDPLATFORM deps AS builder
 # Copy source files
 COPY . .
 
+# UI restriction config (set via --build-arg, defaults to unrestricted)
+ARG NEXT_PUBLIC_DISABLE_MODEL_CREATION=""
+ARG NEXT_PUBLIC_DISABLE_MCP_SERVER_CREATION=""
+ARG NEXT_PUBLIC_DISABLE_BYO_AGENT_CREATION=""
+ARG NEXT_PUBLIC_MODEL_CREATION_DISABLED_MESSAGE=""
+ARG NEXT_PUBLIC_ALLOWED_NAMESPACE=""
+ARG NEXT_PUBLIC_PROTECTED_AGENTS=""
+ENV NEXT_PUBLIC_DISABLE_MODEL_CREATION=$NEXT_PUBLIC_DISABLE_MODEL_CREATION
+ENV NEXT_PUBLIC_DISABLE_MCP_SERVER_CREATION=$NEXT_PUBLIC_DISABLE_MCP_SERVER_CREATION
+ENV NEXT_PUBLIC_DISABLE_BYO_AGENT_CREATION=$NEXT_PUBLIC_DISABLE_BYO_AGENT_CREATION
+ENV NEXT_PUBLIC_MODEL_CREATION_DISABLED_MESSAGE=$NEXT_PUBLIC_MODEL_CREATION_DISABLED_MESSAGE
+ENV NEXT_PUBLIC_ALLOWED_NAMESPACE=$NEXT_PUBLIC_ALLOWED_NAMESPACE
+ENV NEXT_PUBLIC_PROTECTED_AGENTS=$NEXT_PUBLIC_PROTECTED_AGENTS
+
 # Build the application (native compilation for speed)
 RUN --mount=type=cache,target=/root/.npm,rw \
     --mount=type=cache,target=/app/ui/.next/cache,rw \
     export NEXT_TELEMETRY_DEBUG=1 \
-    && npm run build \
+    && find /app/ui/.next/cache -mindepth 1 -delete 2>/dev/null || true \
+    && npx next build --webpack \
     && mkdir -p /app/ui/public
 
 ### STAGE 3: Runtime

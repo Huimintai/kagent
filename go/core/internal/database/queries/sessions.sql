@@ -8,12 +8,34 @@ SELECT * FROM session
 WHERE user_id = $1 AND deleted_at IS NULL
 ORDER BY updated_at DESC, created_at DESC;
 
+-- name: ListSessionsVisible :many
+SELECT * FROM session
+WHERE deleted_at IS NULL AND (
+    visibility = 'public'
+    OR user_id = @user_id
+    OR (visibility = 'shared' AND @user_id = ANY(shared_with))
+    OR pinned = true
+)
+ORDER BY created_at ASC;
+
 -- name: ListSessionsForAgent :many
 SELECT * FROM session
 WHERE agent_id = $1 AND deleted_at IS NULL
   AND (source IS NULL OR source != 'agent')
   AND (user_id = $2 OR pinned = true)
 ORDER BY updated_at DESC, created_at DESC;
+
+-- name: ListSessionsForAgentVisible :many
+SELECT * FROM session
+WHERE agent_id = $1 AND deleted_at IS NULL
+  AND (source IS NULL OR source != 'agent')
+  AND (
+    user_id = @user_id
+    OR pinned = true
+    OR visibility = 'public'
+    OR (visibility = 'shared' AND @user_id = ANY(shared_with))
+  )
+ORDER BY created_at ASC;
 
 -- name: ListSessionsForAgentAllUsers :many
 SELECT * FROM session
@@ -27,13 +49,15 @@ WHERE id = $1 AND pinned = true AND deleted_at IS NULL
 LIMIT 1;
 
 -- name: UpsertSession :exec
-INSERT INTO session (id, user_id, name, agent_id, source, pinned, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+INSERT INTO session (id, user_id, name, agent_id, source, pinned, visibility, shared_with, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
 ON CONFLICT (id, user_id) DO UPDATE SET
     name       = EXCLUDED.name,
     agent_id   = EXCLUDED.agent_id,
     source     = EXCLUDED.source,
     pinned     = EXCLUDED.pinned,
+    visibility = EXCLUDED.visibility,
+    shared_with = EXCLUDED.shared_with,
     updated_at = NOW();
 
 -- name: SoftDeleteSession :exec

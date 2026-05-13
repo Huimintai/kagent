@@ -7,6 +7,7 @@ package dbgen
 import (
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/kagent-dev/kagent/go/api/adk"
 	"github.com/kagent-dev/kagent/go/api/database"
 	pgvector_go "github.com/pgvector/pgvector-go"
@@ -22,6 +23,8 @@ type Agent struct {
 	WorkloadType string
 	UserID       string
 	PrivateMode  bool
+	Visibility   string
+	SharedWith   []string
 }
 
 type AgentComment struct {
@@ -29,8 +32,8 @@ type AgentComment struct {
 	AgentID   string
 	UserID    string
 	Content   string
-	CreatedAt *time.Time
-	DeletedAt *time.Time
+	CreatedAt pgtype.Timestamptz
+	DeletedAt pgtype.Timestamptz
 }
 
 type CrewaiAgentMemory struct {
@@ -114,6 +117,8 @@ type Memory struct {
 	CreatedAt   *time.Time
 	ExpiresAt   *time.Time
 	AccessCount *int64
+	Visibility  string
+	SharedWith  []string
 }
 
 type PushNotification struct {
@@ -126,15 +131,17 @@ type PushNotification struct {
 }
 
 type Session struct {
-	ID        string
-	UserID    string
-	Name      *string
-	CreatedAt *time.Time
-	UpdatedAt *time.Time
-	DeletedAt *time.Time
-	AgentID   *string
-	Source    *string
-	Pinned    bool
+	ID         string
+	UserID     string
+	Name       *string
+	CreatedAt  *time.Time
+	UpdatedAt  *time.Time
+	DeletedAt  *time.Time
+	AgentID    *string
+	Source     *string
+	Pinned     bool
+	Visibility string
+	SharedWith []string
 }
 
 type Task struct {

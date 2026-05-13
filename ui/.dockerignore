@@ -7,3 +7,5 @@ htmlcov/
 workspace/
 node_modules/
 .next/
+!.next/standalone/
+!.next/static/

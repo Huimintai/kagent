@@ -1,6 +1,6 @@
 -- name: InsertMemory :one
-INSERT INTO memory (agent_name, user_id, content, embedding, metadata, created_at, expires_at, access_count)
-VALUES ($1, $2, $3, $4, $5, NOW(), $6, $7)
+INSERT INTO memory (agent_name, user_id, content, embedding, metadata, visibility, shared_with, created_at, expires_at, access_count)
+VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8, $9)
 RETURNING id;
 
 -- name: SearchAgentMemory :many
@@ -12,6 +12,17 @@ WHERE agent_name = $2 AND user_id = $3
 ORDER BY embedding <=> $1 ASC
 LIMIT $4;
 
+-- name: SearchAgentMemoryVisible :many
+SELECT *, COALESCE(1 - (embedding <=> $1), 0) AS score
+FROM memory
+WHERE agent_name = $2 AND (
+    visibility = 'public'
+    OR user_id = $3
+    OR (visibility = 'shared' AND $3 = ANY(shared_with))
+)
+ORDER BY embedding <=> $1 ASC
+LIMIT $4;
+
 -- name: IncrementMemoryAccessCount :exec
 UPDATE memory SET access_count = access_count + 1
 WHERE id = ANY($1::text[]);
@@ -19,6 +30,15 @@ WHERE id = ANY($1::text[]);
 -- name: ListAgentMemories :many
 SELECT * FROM memory
 WHERE (agent_name = $1 OR agent_name = $2) AND user_id = $3
+ORDER BY access_count DESC;
+
+-- name: ListAgentMemoriesVisible :many
+SELECT * FROM memory
+WHERE (agent_name = $1 OR agent_name = $2) AND (
+    visibility = 'public'
+    OR user_id = $3
+    OR (visibility = 'shared' AND $3 = ANY(shared_with))
+)
 ORDER BY access_count DESC;
 
 -- name: DeleteAgentMemory :exec

@@ -5,6 +5,9 @@ values.local.yaml
 
 test_results
 
+# Local cluster operations (deploy scripts, secrets, binaries, demos)
+.local/
+
 ### Go template
 # If you prefer the allow list template instead of the deny list, see community template:
 # https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
@@ -214,3 +217,6 @@ file::memory:*
 ## Test certificates
 python/packages/kagent-adk/tests/fixtures/certs/*.pem
 python/packages/kagent-adk/tests/fixtures/certs/*.srl
+.local-build/
+migration-output/
+docker/skills-init/bin/

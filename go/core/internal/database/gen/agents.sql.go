@@ -12,7 +12,7 @@ import (
 )
 
 const getAgent = `-- name: GetAgent :one
-SELECT id, created_at, updated_at, deleted_at, type, config, workload_type, user_id, private_mode FROM agent
+SELECT id, created_at, updated_at, deleted_at, type, config, workload_type, user_id, private_mode, visibility, shared_with FROM agent
 WHERE id = $1 AND deleted_at IS NULL
 LIMIT 1
 `
@@ -30,12 +30,14 @@ func (q *Queries) GetAgent(ctx context.Context, id string) (Agent, error) {
 		&i.WorkloadType,
 		&i.UserID,
 		&i.PrivateMode,
+		&i.Visibility,
+		&i.SharedWith,
 	)
 	return i, err
 }
 
 const listAgents = `-- name: ListAgents :many
-SELECT id, created_at, updated_at, deleted_at, type, config, workload_type, user_id, private_mode FROM agent
+SELECT id, created_at, updated_at, deleted_at, type, config, workload_type, user_id, private_mode, visibility, shared_with FROM agent
 WHERE deleted_at IS NULL
 ORDER BY created_at ASC
 `
@@ -59,6 +61,50 @@ func (q *Queries) ListAgents(ctx context.Context) ([]Agent, error) {
 			&i.WorkloadType,
 			&i.UserID,
 			&i.PrivateMode,
+			&i.Visibility,
+			&i.SharedWith,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAgentsVisible = `-- name: ListAgentsVisible :many
+SELECT id, created_at, updated_at, deleted_at, type, config, workload_type, user_id, private_mode, visibility, shared_with FROM agent
+WHERE deleted_at IS NULL AND (
+    visibility = 'public'
+    OR user_id = $1
+    OR (visibility = 'shared' AND $1 = ANY(shared_with))
+)
+ORDER BY created_at ASC
+`
+
+func (q *Queries) ListAgentsVisible(ctx context.Context, userID string) ([]Agent, error) {
+	rows, err := q.db.Query(ctx, listAgentsVisible, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Agent
+	for rows.Next() {
+		var i Agent
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.Type,
+			&i.Config,
+			&i.WorkloadType,
+			&i.UserID,
+			&i.PrivateMode,
+			&i.Visibility,
+			&i.SharedWith,
 		); err != nil {
 			return nil, err
 		}
@@ -79,17 +125,41 @@ func (q *Queries) SoftDeleteAgent(ctx context.Context, id string) error {
 	return err
 }
 
+const updateAgentVisibility = `-- name: UpdateAgentVisibility :exec
+UPDATE agent SET visibility = $2, shared_with = $3, updated_at = NOW()
+WHERE id = $1 AND user_id = $4 AND deleted_at IS NULL
+`
+
+type UpdateAgentVisibilityParams struct {
+	ID         string
+	Visibility string
+	SharedWith []string
+	UserID     string
+}
+
+func (q *Queries) UpdateAgentVisibility(ctx context.Context, arg UpdateAgentVisibilityParams) error {
+	_, err := q.db.Exec(ctx, updateAgentVisibility,
+		arg.ID,
+		arg.Visibility,
+		arg.SharedWith,
+		arg.UserID,
+	)
+	return err
+}
+
 const upsertAgent = `-- name: UpsertAgent :exec
-INSERT INTO agent (id, type, workload_type, config, user_id, private_mode, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+INSERT INTO agent (id, type, workload_type, config, user_id, private_mode, visibility, shared_with, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
 ON CONFLICT (id) DO UPDATE SET
-    type         = EXCLUDED.type,
+    type          = EXCLUDED.type,
     workload_type = EXCLUDED.workload_type,
-    config       = EXCLUDED.config,
-    user_id      = EXCLUDED.user_id,
-    private_mode = EXCLUDED.private_mode,
-    updated_at   = NOW(),
-    deleted_at   = NULL
+    config        = EXCLUDED.config,
+    user_id       = EXCLUDED.user_id,
+    private_mode  = EXCLUDED.private_mode,
+    visibility    = EXCLUDED.visibility,
+    shared_with   = EXCLUDED.shared_with,
+    updated_at    = NOW(),
+    deleted_at    = NULL
 `
 
 type UpsertAgentParams struct {
@@ -99,6 +169,8 @@ type UpsertAgentParams struct {
 	Config       *adk.AgentConfig
 	UserID       string
 	PrivateMode  bool
+	Visibility   string
+	SharedWith   []string
 }
 
 func (q *Queries) UpsertAgent(ctx context.Context, arg UpsertAgentParams) error {
@@ -109,6 +181,8 @@ func (q *Queries) UpsertAgent(ctx context.Context, arg UpsertAgentParams) error 
 		arg.Config,
 		arg.UserID,
 		arg.PrivateMode,
+		arg.Visibility,
+		arg.SharedWith,
 	)
 	return err
 }
