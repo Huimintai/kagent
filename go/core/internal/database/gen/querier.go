@@ -9,23 +9,34 @@ import (
 )
 
 type Querier interface {
+	CountAgentComments(ctx context.Context, agentID string) (int64, error)
+	CreateAgentComment(ctx context.Context, arg CreateAgentCommentParams) (AgentComment, error)
+	DeleteAgentComment(ctx context.Context, arg DeleteAgentCommentParams) error
 	DeleteAgentMemory(ctx context.Context, arg DeleteAgentMemoryParams) error
 	DeleteExpiredMemories(ctx context.Context) error
 	ExtendMemoryTTL(ctx context.Context) error
 	GetAgent(ctx context.Context, id string) (Agent, error)
+	// Returns top agents ranked by distinct user count with session/message counts
+	GetAgentSessionStats(ctx context.Context, limit int32) ([]GetAgentSessionStatsRow, error)
 	GetCheckpoint(ctx context.Context, arg GetCheckpointParams) (LgCheckpoint, error)
 	GetEvent(ctx context.Context, arg GetEventParams) (Event, error)
 	GetLatestCrewAIFlowState(ctx context.Context, arg GetLatestCrewAIFlowStateParams) (CrewaiFlowState, error)
+	GetPinnedSession(ctx context.Context, id string) (Session, error)
+	// Returns total counts for the platform overview
+	GetPlatformSummary(ctx context.Context) (GetPlatformSummaryRow, error)
 	GetPushNotification(ctx context.Context, arg GetPushNotificationParams) (PushNotification, error)
 	GetSession(ctx context.Context, arg GetSessionParams) (Session, error)
 	GetTask(ctx context.Context, id string) (Task, error)
 	GetTool(ctx context.Context, id string) (Tool, error)
 	GetToolServer(ctx context.Context, name string) (Toolserver, error)
+	// Returns tool servers ranked by number of agents that reference their tools
+	GetToolServerStats(ctx context.Context, limit int32) ([]GetToolServerStatsRow, error)
 	HardDeleteCrewAIMemory(ctx context.Context, arg HardDeleteCrewAIMemoryParams) error
 	IncrementMemoryAccessCount(ctx context.Context, dollar_1 []string) error
 	InsertEvent(ctx context.Context, arg InsertEventParams) error
 	InsertFeedback(ctx context.Context, arg InsertFeedbackParams) error
 	InsertMemory(ctx context.Context, arg InsertMemoryParams) (string, error)
+	ListAgentComments(ctx context.Context, arg ListAgentCommentsParams) ([]AgentComment, error)
 	ListAgentMemories(ctx context.Context, arg ListAgentMemoriesParams) ([]Memory, error)
 	ListAgents(ctx context.Context) ([]Agent, error)
 	ListCheckpointWrites(ctx context.Context, arg ListCheckpointWritesParams) ([]LgCheckpointWrite, error)

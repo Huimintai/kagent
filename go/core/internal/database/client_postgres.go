@@ -8,7 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	dbpkg "github.com/kagent-dev/kagent/go/api/database"
 	"github.com/kagent-dev/kagent/go/api/v1alpha2"
@@ -49,6 +51,8 @@ func (c *postgresClient) StoreAgent(ctx context.Context, agent *dbpkg.Agent) err
 		Type:         agent.Type,
 		WorkloadType: string(agent.WorkloadType),
 		Config:       agent.Config,
+		UserID:       agent.UserID,
+		PrivateMode:  agent.PrivateMode,
 	})
 }
 
@@ -85,6 +89,7 @@ func (c *postgresClient) StoreSession(ctx context.Context, session *dbpkg.Sessio
 			UserID:  session.UserID,
 			Name:    session.Name,
 			AgentID: session.AgentID,
+			Pinned:  session.Pinned,
 		}
 		if session.Source != nil {
 			src := string(*session.Source)
@@ -98,6 +103,14 @@ func (c *postgresClient) GetSession(ctx context.Context, sessionID, userID strin
 	row, err := c.q.GetSession(ctx, dbgen.GetSessionParams{ID: sessionID, UserID: userID})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get session %s: %w", sessionID, err)
+	}
+	return toSession(row), nil
+}
+
+func (c *postgresClient) GetPinnedSession(ctx context.Context, sessionID string) (*dbpkg.Session, error) {
+	row, err := c.q.GetPinnedSession(ctx, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get pinned session %s: %w", sessionID, err)
 	}
 	return toSession(row), nil
 }
@@ -393,6 +406,7 @@ func (c *postgresClient) StoreToolServer(ctx context.Context, ts *dbpkg.ToolServ
 		GroupKind:     ts.GroupKind,
 		Description:   &ts.Description,
 		LastConnected: ts.LastConnected,
+		UserID:        ts.UserID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to store tool server: %w", err)
@@ -694,6 +708,110 @@ func (c *postgresClient) PruneExpiredMemories(ctx context.Context) error {
 	})
 }
 
+// ── Stats ────────────────────────────────────────────────────────────────────
+
+func (c *postgresClient) GetStats(ctx context.Context, limit int) (*dbpkg.PlatformStats, error) {
+	summary, err := c.q.GetPlatformSummary(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get platform summary: %w", err)
+	}
+
+	agentRows, err := c.q.GetAgentSessionStats(ctx, int32(limit))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get agent session stats: %w", err)
+	}
+
+	toolServerRows, err := c.q.GetToolServerStats(ctx, int32(limit))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tool server stats: %w", err)
+	}
+
+	topAgents := make([]dbpkg.AgentStatRow, len(agentRows))
+	for i, r := range agentRows {
+		var lastActive *time.Time
+		if t, ok := r.LastActiveAt.(time.Time); ok {
+			lastActive = &t
+		}
+		topAgents[i] = dbpkg.AgentStatRow{
+			AgentID:      derefStr(r.AgentID),
+			UserCount:    r.UserCount,
+			SessionCount: r.SessionCount,
+			MessageCount: r.MessageCount,
+			LastActiveAt: lastActive,
+		}
+	}
+
+	topMCPs := make([]dbpkg.ToolServerStatRow, len(toolServerRows))
+	for i, r := range toolServerRows {
+		topMCPs[i] = dbpkg.ToolServerStatRow{
+			Name:          r.Name,
+			GroupKind:     r.GroupKind,
+			AgentCount:    r.AgentCount,
+			LastConnected: r.LastConnected,
+		}
+	}
+
+	return &dbpkg.PlatformStats{
+		Summary: dbpkg.PlatformSummary{
+			TotalAgents:      summary.TotalAgents,
+			TotalSessions:    summary.TotalSessions,
+			TotalToolServers: summary.TotalToolServers,
+			SessionsToday:    summary.SessionsToday,
+		},
+		TopAgents: topAgents,
+		TopMCPs:   topMCPs,
+	}, nil
+}
+
+// ── Agent Comments ──────────────────────────────────────────────────────────
+
+func (c *postgresClient) CreateAgentComment(ctx context.Context, agentID, userID, content string) (*dbpkg.AgentComment, error) {
+	id := uuid.New().String()
+	row, err := c.q.CreateAgentComment(ctx, dbgen.CreateAgentCommentParams{
+		ID:      id,
+		AgentID: agentID,
+		UserID:  userID,
+		Content: content,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create agent comment: %w", err)
+	}
+	return toAgentComment(row), nil
+}
+
+func (c *postgresClient) ListAgentComments(ctx context.Context, agentID string, limit int) ([]dbpkg.AgentComment, error) {
+	rows, err := c.q.ListAgentComments(ctx, dbgen.ListAgentCommentsParams{
+		AgentID: agentID,
+		Limit:   int32(limit),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list agent comments: %w", err)
+	}
+	comments := make([]dbpkg.AgentComment, len(rows))
+	for i, r := range rows {
+		comments[i] = *toAgentComment(r)
+	}
+	return comments, nil
+}
+
+func (c *postgresClient) DeleteAgentComment(ctx context.Context, commentID, userID string) error {
+	if err := c.q.DeleteAgentComment(ctx, dbgen.DeleteAgentCommentParams{
+		ID:     commentID,
+		UserID: userID,
+	}); err != nil {
+		return fmt.Errorf("failed to delete agent comment: %w", err)
+	}
+	return nil
+}
+
+func (c *postgresClient) CountAgentComments(ctx context.Context, agentID string) (int64, error) {
+	count, err := c.q.CountAgentComments(ctx, agentID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count agent comments: %w", err)
+	}
+	return count, nil
+}
+
 // ── Conversion helpers ────────────────────────────────────────────────────────
 
 func toAgent(r dbgen.Agent) *dbpkg.Agent {
@@ -705,6 +823,8 @@ func toAgent(r dbgen.Agent) *dbpkg.Agent {
 		Type:         r.Type,
 		WorkloadType: v1alpha2.WorkloadMode(r.WorkloadType),
 		Config:       r.Config,
+		UserID:       r.UserID,
+		PrivateMode:  r.PrivateMode,
 	}
 }
 
@@ -717,6 +837,7 @@ func toSession(r dbgen.Session) *dbpkg.Session {
 		UpdatedAt: derefTime(r.UpdatedAt),
 		DeletedAt: r.DeletedAt,
 		AgentID:   r.AgentID,
+		Pinned:    r.Pinned,
 	}
 	if r.Source != nil {
 		src := dbpkg.SessionSource(*r.Source)
@@ -783,6 +904,7 @@ func toToolServer(r dbgen.Toolserver) *dbpkg.ToolServer {
 		DeletedAt:     r.DeletedAt,
 		Description:   derefStr(r.Description),
 		LastConnected: r.LastConnected,
+		UserID:        r.UserID,
 	}
 }
 
@@ -855,6 +977,31 @@ func toMemory(r dbgen.Memory) *dbpkg.Memory {
 		ExpiresAt:   r.ExpiresAt,
 		AccessCount: derefInt64(r.AccessCount),
 	}
+}
+
+func toAgentComment(r dbgen.AgentComment) *dbpkg.AgentComment {
+	return &dbpkg.AgentComment{
+		ID:        r.ID,
+		AgentID:   r.AgentID,
+		UserID:    r.UserID,
+		Content:   r.Content,
+		CreatedAt: timestamptzToTime(r.CreatedAt),
+		DeletedAt: timestamptzToPtr(r.DeletedAt),
+	}
+}
+
+func timestamptzToTime(t pgtype.Timestamptz) time.Time {
+	if t.Valid {
+		return t.Time
+	}
+	return time.Time{}
+}
+
+func timestamptzToPtr(t pgtype.Timestamptz) *time.Time {
+	if t.Valid {
+		return &t.Time
+	}
+	return nil
 }
 
 // ── Pointer helpers ───────────────────────────────────────────────────────────
