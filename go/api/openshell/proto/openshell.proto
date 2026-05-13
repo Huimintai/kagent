@@ -42,6 +42,11 @@ service OpenShell {
   // Execute a command in a ready sandbox and stream output.
   rpc ExecSandbox(ExecSandboxRequest) returns (stream ExecSandboxEvent);
 
+  // Forward raw TCP bytes to a sandbox target (e.g. SSH daemon) over a
+  // bidirectional gRPC stream. The first client frame must carry a
+  // TcpForwardInit; subsequent frames in either direction carry raw bytes.
+  rpc ForwardTcp(stream TcpForwardFrame) returns (stream TcpForwardFrame);
+
   // Create a provider.
   rpc CreateProvider(CreateProviderRequest) returns (ProviderResponse);
 
@@ -1184,6 +1189,44 @@ message StoredPolicyRevision {
   optional string load_error = 7;
   int64 created_at_ms = 8;
   optional int64 loaded_at_ms = 9;
+}
+
+// ---------------------------------------------------------------------------
+// ForwardTcp messages
+// ---------------------------------------------------------------------------
+
+// Init frame sent as the first client message on a ForwardTcp stream.
+message TcpForwardInit {
+  // Sandbox ID to connect to.
+  string sandbox_id = 1;
+  // Service identifier within the sandbox (e.g. "ssh-proxy:<sandbox_id>").
+  string service_id = 4;
+  // Connection target.
+  oneof target {
+    SshRelayTarget ssh = 5;
+    TcpRelayTarget tcp = 6;
+  }
+  // Session token from CreateSshSession.
+  string authorization_token = 7;
+}
+
+// One frame on the ForwardTcp bidirectional stream.
+message TcpForwardFrame {
+  oneof payload {
+    // First client frame: connection init parameters.
+    TcpForwardInit init = 1;
+    // Subsequent frames: raw TCP bytes in either direction.
+    bytes data = 2;
+  }
+}
+
+// Relay target: SSH daemon inside the sandbox.
+message SshRelayTarget {}
+
+// Relay target: arbitrary TCP endpoint.
+message TcpRelayTarget {
+  string host = 1;
+  uint32 port = 2;
 }
 
 // Internal stored draft chunk row materialized from the generic objects table.

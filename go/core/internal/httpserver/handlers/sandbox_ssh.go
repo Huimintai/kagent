@@ -1,9 +1,7 @@
 package handlers
 
 import (
-	"bufio"
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -32,16 +29,15 @@ const (
 	openshellGRPCEnv           = "OPENSHELL_GRPC_ADDR"
 	defaultSandboxSSHLaunchCmd = "openclaw tui"
 
-	sandboxSSHWSReadBufSize      = 4096
-	sandboxSSHHandshakeTimeout   = 90 * time.Second
-	sandboxSSHWSWriteDeadline    = 15 * time.Second
-	sandboxSSHDefaultCols        = 120
-	sandboxSSHDefaultRows        = 36
-	sandboxSSHCopyBufSize        = 32 * 1024
-	sandboxSSHGatewayDialTimeout = 30 * time.Second
-	sandboxSSHClientConnTimeout  = 60 * time.Second
-	sandboxSSHUser               = "sandbox"
-	sandboxSSHPTYTerm            = "xterm-256color"
+	sandboxSSHWSReadBufSize    = 4096
+	sandboxSSHHandshakeTimeout = 90 * time.Second
+	sandboxSSHWSWriteDeadline  = 15 * time.Second
+	sandboxSSHDefaultCols      = 120
+	sandboxSSHDefaultRows      = 36
+	sandboxSSHCopyBufSize      = 32 * 1024
+	sandboxSSHClientConnTimeout = 60 * time.Second
+	sandboxSSHUser              = "sandbox"
+	sandboxSSHPTYTerm           = "xterm-256color"
 )
 
 type sshStartMsg struct {
@@ -279,17 +275,26 @@ func (h *Handlers) dialOpenshellShellSession(
 	if err != nil {
 		return nil, nil, nil, nil, nil, fmt.Errorf("grpc dial %q: %w", grpcAddr, err)
 	}
-	defer grpcConn.Close()
+	// grpcConn lifetime is owned by tunnelConn.Close() — do NOT defer grpcConn.Close() here.
 
 	cli := openshellv1.NewOpenShellClient(grpcConn)
 	sandboxID, sshRes, err := openshellCreateSSHSession(ctx, cli, sandboxName)
 	if err != nil {
+		_ = grpcConn.Close()
 		return nil, nil, nil, nil, nil, err
 	}
 
-	tunnelConn, dialHost, err := openshellDialHTTPConnectTunnel(ctx, grpcAddr, sshRes, sandboxID)
+	tunnelConn, err := openForwardTcpStream(ctx, grpcConn, sandboxID, sshRes.GetToken())
 	if err != nil {
+		_ = grpcConn.Close()
 		return nil, nil, nil, nil, nil, err
+	}
+
+	// dialHost is only used for SSH host-key verification; InsecureIgnoreHostKey() is in use,
+	// so any non-empty string is acceptable.
+	dialHost := grpcAddr
+	if host, _, splitErr := net.SplitHostPort(grpcAddr); splitErr == nil && host != "" {
+		dialHost = host
 	}
 
 	return openSSHSessionOverTunnel(tunnelConn, dialHost, rows, cols, plainShell, launchCommandFromClient)
@@ -326,53 +331,10 @@ func openshellCreateSSHSession(
 	}
 
 	token := sshRes.GetToken()
-	gwHost := sshRes.GetGatewayHost()
-	gwPort := sshRes.GetGatewayPort()
-	scheme := strings.ToLower(strings.TrimSpace(sshRes.GetGatewayScheme()))
-	connectPath := sshRes.GetConnectPath()
-	if token == "" || gwHost == "" || gwPort == 0 || scheme == "" || connectPath == "" {
-		return "", nil, errors.New("CreateSshSession returned incomplete tunnel fields")
+	if token == "" {
+		return "", nil, errors.New("CreateSshSession returned empty token")
 	}
 	return sandboxID, sshRes, nil
-}
-
-func openshellDialHTTPConnectTunnel(
-	ctx context.Context,
-	grpcAddr string,
-	sshRes *openshellv1.CreateSshSessionResponse,
-	sandboxID string,
-) (tunnelConn net.Conn, dialHost string, err error) {
-	token := sshRes.GetToken()
-	gwHost := sshRes.GetGatewayHost()
-	gwPort := sshRes.GetGatewayPort()
-	scheme := strings.ToLower(strings.TrimSpace(sshRes.GetGatewayScheme()))
-	connectPath := sshRes.GetConnectPath()
-	sid := sshRes.GetSandboxId()
-	if sid == "" {
-		sid = sandboxID
-	}
-
-	dialHost, err = resolveGatewayDialHost(gwHost, grpcAddr)
-	if err != nil {
-		return nil, "", err
-	}
-	if dialHost != gwHost {
-		log := ctrllog.FromContext(ctx)
-		log.Info("using cluster-reachable host for OpenShell gateway (CreateSshSession returned loopback)",
-			"gateway_host", gwHost, "dial_host", dialHost)
-	}
-
-	rawConn, err := dialGateway(scheme, dialHost, int(gwPort))
-	if err != nil {
-		return nil, "", err
-	}
-
-	tunnelConn, err = completeHTTPConnect(ctx, rawConn, dialHost, connectPath, sid, token)
-	if err != nil {
-		_ = rawConn.Close()
-		return nil, "", err
-	}
-	return tunnelConn, dialHost, nil
 }
 
 func openSSHSessionOverTunnel(
@@ -450,106 +412,4 @@ func openSSHSessionOverTunnel(
 	}
 
 	return sshClient, session, stdin, stdout, stderr, nil
-}
-
-func dialGateway(scheme, host string, port int) (net.Conn, error) {
-	addr := net.JoinHostPort(host, strconv.Itoa(port))
-	d := net.Dialer{Timeout: sandboxSSHGatewayDialTimeout}
-	switch scheme {
-	case "https":
-		serverName := host
-		if strings.HasPrefix(host, "[") && strings.Contains(host, "]") {
-			serverName = strings.TrimSuffix(strings.TrimPrefix(host, "["), "]")
-		}
-		return tls.DialWithDialer(&d, "tcp", addr, &tls.Config{
-			MinVersion: tls.VersionTLS12,
-			ServerName: serverName,
-		})
-	case "http":
-		return d.Dial("tcp", addr)
-	default:
-		return nil, fmt.Errorf("unsupported gateway_scheme %q", scheme)
-	}
-}
-
-func completeHTTPConnect(ctx context.Context, conn net.Conn, gatewayHost, connectPath, sandboxID, token string) (net.Conn, error) {
-	deadline, ok := ctx.Deadline()
-	if ok {
-		_ = conn.SetDeadline(deadline)
-	}
-	req := fmt.Sprintf(
-		"CONNECT %s HTTP/1.1\r\nHost: %s\r\nX-Sandbox-Id: %s\r\nX-Sandbox-Token: %s\r\n\r\n",
-		connectPath,
-		gatewayHost,
-		sandboxID,
-		token,
-	)
-	if _, err := conn.Write([]byte(req)); err != nil {
-		return nil, fmt.Errorf("CONNECT write: %w", err)
-	}
-
-	br := bufio.NewReader(conn)
-	statusLine, err := br.ReadString('\n')
-	if err != nil {
-		return nil, fmt.Errorf("CONNECT read status: %w", err)
-	}
-	if !strings.Contains(statusLine, " 200 ") {
-		return nil, fmt.Errorf("CONNECT failed: %s", strings.TrimSpace(statusLine))
-	}
-	for {
-		line, rerr := br.ReadString('\n')
-		if rerr != nil {
-			return nil, fmt.Errorf("CONNECT read headers: %w", rerr)
-		}
-		if line == "\r\n" || line == "\n" {
-			break
-		}
-	}
-	_ = conn.SetDeadline(time.Time{})
-	return &prefixReaderConn{Conn: conn, br: br}, nil
-}
-
-type prefixReaderConn struct {
-	net.Conn
-	br *bufio.Reader
-}
-
-func (p *prefixReaderConn) Read(b []byte) (int, error) {
-	if p.br != nil && p.br.Buffered() > 0 {
-		n, err := p.br.Read(b)
-		if p.br.Buffered() == 0 {
-			p.br = nil
-		}
-		return n, err
-	}
-	return p.Conn.Read(b)
-}
-
-func isLoopbackHost(h string) bool {
-	switch strings.ToLower(strings.TrimSpace(h)) {
-	case "127.0.0.1", "localhost", "::1", "[::1]":
-		return true
-	default:
-		return false
-	}
-}
-
-// resolveGatewayDialHost maps CreateSshSession's gateway_host to a TCP dial target from the controller pod.
-// When OpenShell returns loopback, we dial the host from the OpenShell gRPC address (same Service, any namespace).
-func resolveGatewayDialHost(gatewayHost, grpcTarget string) (string, error) {
-	if !isLoopbackHost(gatewayHost) {
-		return gatewayHost, nil
-	}
-	host, _, err := net.SplitHostPort(grpcTarget)
-	if err != nil {
-		return "", fmt.Errorf(
-			"CreateSshSession gateway_host=%q is loopback; grpc target %q must be host:port so kagent can dial the OpenShell service: %w",
-			gatewayHost, grpcTarget, err)
-	}
-	if host == "" {
-		return "", fmt.Errorf(
-			"CreateSshSession gateway_host=%q is loopback; grpc target %q has an empty host",
-			gatewayHost, grpcTarget)
-	}
-	return host, nil
 }

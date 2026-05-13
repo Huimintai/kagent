@@ -1,10 +1,7 @@
 package handlers
 
 import (
-	"bufio"
 	"bytes"
-	"context"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,26 +9,6 @@ import (
 
 	"github.com/gorilla/websocket"
 )
-
-func TestIsLoopbackHost(t *testing.T) {
-	tests := []struct {
-		host string
-		want bool
-	}{
-		{"127.0.0.1", true},
-		{"localhost", true},
-		{"LOCALHOST", true},
-		{"::1", true},
-		{"[::1]", true},
-		{"openshell.openshell.svc.cluster.local", false},
-		{"10.0.0.1", false},
-	}
-	for _, tt := range tests {
-		if got := isLoopbackHost(tt.host); got != tt.want {
-			t.Errorf("isLoopbackHost(%q) = %v, want %v", tt.host, got, tt.want)
-		}
-	}
-}
 
 func TestResolveSandboxSSHRemoteCommand(t *testing.T) {
 	plain, cmd := resolveSandboxSSHRemoteCommand(false, "")
@@ -45,38 +22,6 @@ func TestResolveSandboxSSHRemoteCommand(t *testing.T) {
 	plain, cmd = resolveSandboxSSHRemoteCommand(false, "  custom  ")
 	if plain || cmd != "custom" {
 		t.Fatalf("override: plain=%v cmd=%q", plain, cmd)
-	}
-}
-
-func TestResolveGatewayDialHost(t *testing.T) {
-	got, err := resolveGatewayDialHost("ingress.example.com", "ignored:8080")
-	if err != nil || got != "ingress.example.com" {
-		t.Fatalf("non-loopback: got %q err %v", got, err)
-	}
-
-	got, err = resolveGatewayDialHost("127.0.0.1", "openshell.openshell.svc.cluster.local:8080")
-	if err != nil || got != "openshell.openshell.svc.cluster.local" {
-		t.Fatalf("loopback + grpc: got %q err %v", got, err)
-	}
-
-	got, err = resolveGatewayDialHost("127.0.0.1", "grpc.other.namespace.svc.cluster.local:9090")
-	if err != nil || got != "grpc.other.namespace.svc.cluster.local" {
-		t.Fatalf("loopback + other grpc host: got %q err %v", got, err)
-	}
-}
-
-func TestResolveGatewayDialHost_InvalidGRPCTarget(t *testing.T) {
-	_, err := resolveGatewayDialHost("127.0.0.1", "not-a-valid-hostport")
-	if err == nil {
-		t.Fatal("expected error for invalid grpc host:port")
-	}
-
-	_, err = resolveGatewayDialHost("127.0.0.1", ":8080")
-	if err == nil {
-		t.Fatal("expected error for empty grpc host with loopback gateway")
-	}
-	if !strings.Contains(err.Error(), "empty host") {
-		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -260,66 +205,3 @@ func TestReadSandboxSSHStart(t *testing.T) {
 	})
 }
 
-func TestCompleteHTTPConnect(t *testing.T) {
-	t.Run("ok and reads tunneled bytes", func(t *testing.T) {
-		client, server := net.Pipe()
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			defer server.Close()
-			br := bufio.NewReader(server)
-			for {
-				line, err := br.ReadString('\n')
-				if err != nil {
-					return
-				}
-				if line == "\r\n" || line == "\n" {
-					break
-				}
-			}
-			if _, err := server.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\npayload")); err != nil {
-				return
-			}
-		}()
-
-		ctx := context.Background()
-		tunnel, err := completeHTTPConnect(ctx, client, "gw.example", "/connect-path", "sid", "tok")
-		if err != nil {
-			t.Fatal(err)
-		}
-		buf := make([]byte, 32)
-		n, err := tunnel.Read(buf)
-		if err != nil || string(buf[:n]) != "payload" {
-			t.Fatalf("read %q err %v", buf[:n], err)
-		}
-		_ = client.Close()
-		<-done
-	})
-
-	t.Run("non-200", func(t *testing.T) {
-		client, server := net.Pipe()
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			defer server.Close()
-			br := bufio.NewReader(server)
-			for {
-				line, err := br.ReadString('\n')
-				if err != nil {
-					return
-				}
-				if line == "\r\n" || line == "\n" {
-					break
-				}
-			}
-			_, _ = server.Write([]byte("HTTP/1.1 403 Forbidden\r\n\r\n"))
-		}()
-
-		_, err := completeHTTPConnect(context.Background(), client, "gw.example", "/p", "sid", "tok")
-		_ = client.Close()
-		<-done
-		if err == nil || !strings.Contains(err.Error(), "CONNECT failed") {
-			t.Fatalf("got %v", err)
-		}
-	})
-}
