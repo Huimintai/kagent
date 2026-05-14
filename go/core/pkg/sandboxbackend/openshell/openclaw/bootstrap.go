@@ -58,17 +58,28 @@ func BuildBootstrapJSON(ctx context.Context, kube client.Client, namespace strin
 
 	// processEnv contains all env vars to inject into the openclaw gateway process,
 	// including proxy bypass settings that are not secrets and must not be in the allowlist.
-	processEnv := make(map[string]string, len(secretEnv)+2)
+	processEnv := make(map[string]string, len(secretEnv)+4)
 	for k, v := range secretEnv {
 		processEnv[k] = v
 	}
-	// If the model endpoint is a cluster-internal URL (http scheme), add its host to no_proxy
-	// so the openclaw node process bypasses any HTTPS_PROXY set in the sandbox environment.
+	// If the model endpoint is a cluster-internal URL (http scheme), ensure the openclaw node
+	// process does not route HTTP requests through any proxy.  Node.js/undici reads HTTP_PROXY
+	// (and ALL_PROXY) to proxy plain-HTTP requests, but the openshell sandbox proxy only handles
+	// HTTPS CONNECT – sending HTTP requests through it causes a connection error.  We therefore:
+	//   1. Add the model host to no_proxy/NO_PROXY (belt-and-suspenders for HTTPS_PROXY / Node v22+
+	//      EnvHttpProxyAgent).
+	//   2. Override HTTP_PROXY and ALL_PROXY to empty strings so they cannot affect HTTP requests
+	//      (overriding is safe because ExecSandbox env map entries replace the sandbox's inherited
+	//      values for the spawned process).
 	baseURL := bootstrapProviderBaseURL(mc)
 	if u, parseErr := url.Parse(baseURL); parseErr == nil && u.Scheme == "http" && u.Host != "" {
 		noProxy := "127.0.0.1,localhost,::1," + u.Hostname()
 		processEnv["no_proxy"] = noProxy
 		processEnv["NO_PROXY"] = noProxy
+		// Clear HTTP_PROXY / ALL_PROXY so Node.js does not tunnel plain-HTTP model requests
+		// through the sandbox HTTPS proxy (which cannot handle them).
+		processEnv["HTTP_PROXY"] = ""
+		processEnv["ALL_PROXY"] = ""
 	}
 
 	return raw, processEnv, nil

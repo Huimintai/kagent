@@ -203,3 +203,38 @@ func TestBuildOpenshellCreateRequest_OpenClaw_AllowedDomains_OmitsNPMPresetHosts
 	}
 	require.ElementsMatch(t, []string{"api.openai.com"}, hosts)
 }
+
+func TestBuildOpenshellCreateRequest_AllowedDomains_CustomPort(t *testing.T) {
+	sbx := &v1alpha2.AgentHarness{
+		ObjectMeta: metav1.ObjectMeta{Name: "s1", Namespace: "ns"},
+		Spec: v1alpha2.AgentHarnessSpec{
+			Backend: v1alpha2.AgentHarnessBackendOpenClaw,
+			Network: &v1alpha2.AgentHarnessNetwork{
+				AllowedDomains: []string{
+					// cluster-internal HTTP service on non-standard port
+					"my-svc.my-ns.svc.cluster.local:3030",
+					// standard HTTPS — port must NOT be duplicated
+					"api.openai.com:443",
+					// no port — defaults to [443, 80]
+					"api.anthropic.com",
+				},
+			},
+		},
+	}
+	req, _ := buildAgentHarnessOpenshellCreateRequest(sbx)
+	net := req.GetSpec().GetPolicy().GetNetworkPolicies()
+	rule := net[kagentAllowedDomainsNetworkPolicyKey]
+	require.NotNil(t, rule)
+
+	portsByHost := map[string][]uint32{}
+	for _, ep := range rule.GetEndpoints() {
+		portsByHost[ep.GetHost()] = ep.GetPorts()
+	}
+
+	// custom port 3030 must be included alongside the defaults
+	require.ElementsMatch(t, []uint32{443, 80, 3030}, portsByHost["my-svc.my-ns.svc.cluster.local"])
+	// port 443 already in defaults — must not be duplicated
+	require.ElementsMatch(t, []uint32{443, 80}, portsByHost["api.openai.com"])
+	// no port → defaults only
+	require.ElementsMatch(t, []uint32{443, 80}, portsByHost["api.anthropic.com"])
+}

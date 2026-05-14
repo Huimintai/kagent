@@ -85,6 +85,10 @@ func TestBuildBootstrapJSON_HTTPBaseURL_InjectsNoProxy(t *testing.T) {
 	wantNoProxy := "127.0.0.1,localhost,::1,my-svc.ns.svc.cluster.local"
 	require.Equal(t, wantNoProxy, env["no_proxy"], "no_proxy must include cluster host")
 	require.Equal(t, wantNoProxy, env["NO_PROXY"], "NO_PROXY must include cluster host")
+	// HTTP_PROXY and ALL_PROXY must be cleared so Node.js does not tunnel HTTP model requests
+	// through the sandbox HTTPS proxy (which only supports CONNECT for TLS traffic).
+	require.Equal(t, "", env["HTTP_PROXY"], "HTTP_PROXY must be cleared for http base URL")
+	require.Equal(t, "", env["ALL_PROXY"], "ALL_PROXY must be cleared for http base URL")
 
 	// no_proxy/NO_PROXY must not appear in the secrets allowlist (openclaw rejects lowercase keys)
 	var root map[string]any
@@ -126,6 +130,8 @@ func TestBuildBootstrapJSON_HTTPSBaseURL_NoProxyNotInjected(t *testing.T) {
 	require.NoError(t, err)
 	_, hasNoProxy := env["no_proxy"]
 	require.False(t, hasNoProxy, "no_proxy must not be injected for HTTPS base URLs")
+	_, hasHTTPProxy := env["HTTP_PROXY"]
+	require.False(t, hasHTTPProxy, "HTTP_PROXY must not be overridden for HTTPS base URLs")
 }
 
 func TestBuildBootstrapJSON_OpenAIAndTelegram(t *testing.T) {

@@ -42,7 +42,7 @@ func allowedDomainsNetworkPolicyRule(domains []string) *sandboxv1.NetworkPolicyR
 	endpoints := make([]*sandboxv1.NetworkEndpoint, 0, len(domains))
 	seen := make(map[string]struct{}, len(domains))
 	for _, raw := range domains {
-		host, ok := sandboxbackend.NormalizeAllowedDomainHost(raw)
+		host, port, ok := sandboxbackend.NormalizeAllowedDomainEntry(raw)
 		if !ok {
 			continue
 		}
@@ -51,10 +51,14 @@ func allowedDomainsNetworkPolicyRule(domains []string) *sandboxv1.NetworkPolicyR
 			continue
 		}
 		seen[key] = struct{}{}
+		// Default to standard web ports; include a custom port when explicitly specified.
+		ports := []uint32{443, 80}
+		if port != 0 && port != 443 && port != 80 {
+			ports = append(ports, port)
+		}
 		endpoints = append(endpoints, &sandboxv1.NetworkEndpoint{
-			Host: host,
-			// HTTPS APIs and occasional HTTP redirects.
-			Ports: []uint32{443, 80},
+			Host:  host,
+			Ports: ports,
 			// L7 REST policy: method/path space defaults to full allow via `access`
 			// (mutually exclusive with explicit rules in the schema).
 			Protocol:    allowedDomainsEndpointProtocol,
