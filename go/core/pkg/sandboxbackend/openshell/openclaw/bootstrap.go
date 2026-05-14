@@ -58,7 +58,7 @@ func BuildBootstrapJSON(ctx context.Context, kube client.Client, namespace strin
 
 	// processEnv contains all env vars to inject into the openclaw gateway process,
 	// including proxy bypass settings that are not secrets and must not be in the allowlist.
-	processEnv := make(map[string]string, len(secretEnv)+4)
+	processEnv := make(map[string]string, len(secretEnv)+6)
 	for k, v := range secretEnv {
 		processEnv[k] = v
 	}
@@ -76,10 +76,13 @@ func BuildBootstrapJSON(ctx context.Context, kube client.Client, namespace strin
 		noProxy := "127.0.0.1,localhost,::1," + u.Hostname()
 		processEnv["no_proxy"] = noProxy
 		processEnv["NO_PROXY"] = noProxy
-		// Clear HTTP_PROXY / ALL_PROXY so Node.js does not tunnel plain-HTTP model requests
-		// through the sandbox HTTPS proxy (which cannot handle them).
+		// Clear HTTP_PROXY / ALL_PROXY (both cases) so Node.js / undici EnvHttpProxyAgent
+		// does not tunnel plain-HTTP model requests through the sandbox HTTPS proxy
+		// (which only handles HTTPS CONNECT, not plain-HTTP forwarding).
 		processEnv["HTTP_PROXY"] = ""
+		processEnv["http_proxy"] = ""
 		processEnv["ALL_PROXY"] = ""
+		processEnv["all_proxy"] = ""
 	}
 
 	return raw, processEnv, nil
